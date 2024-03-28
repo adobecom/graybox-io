@@ -23,6 +23,7 @@ notifications:
           - casalino
           - jmichnow
           - mauchley
+          - sukamat
         labels: # You can add additional labels to your tickets here. Do not delete/change the first three.
           - "OriginatingProcess=Kodiak"
           - "security"
