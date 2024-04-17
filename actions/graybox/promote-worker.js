@@ -86,10 +86,9 @@ async function main(params) {
             if (Array.isArray(status)) {
                 status.forEach((stat) => {
                     logger.info(`status >> ${JSON.stringify(stat)}`);
-                    logger.info(`status and rp >> ${stat.success} ${stat.mdPath}`);
                     if (stat.success && stat.mdPath) {
                         logger.info(`Preview success and mdPath for file: ${stat.path} & ${stat.mdPath}`);
-                        updateDocument(mdPath, experienceName, options);
+                        updateDocument(stat.mdPath, experienceName, options);
                     }
                 });
             }

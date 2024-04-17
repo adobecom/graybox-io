@@ -19,10 +19,11 @@ const { mdast2docx } = require('../node_modules/milo-md2docx/lib/index');
 const { getAioLogger } = require('./utils');
 const { fetchWithRetry } = require('./sharepoint');
 
-const gbStyleExpression = 'gb-'
+const gbStyleExpression = 'gb-';//graybox style expression. need to revisit if there are any more styles to be considered.
 const emptyString = '';
-const grayboxStylesRegex = new RegExp('gb-[a-zA-Z0-9._-]*');
+const grayboxStylesRegex = new RegExp('gb-[a-zA-Z0-9,._-]*', 'g');
 const logger = getAioLogger();
+let firstGtRows = [];
 
 
 /**
@@ -32,52 +33,99 @@ const logger = getAioLogger();
  * @param {object} options - The options for fetching the Markdown file.
  * @returns {Promise} - A promise that resolves to the generated Docx file.
  */
-async function updateDocument(mdPath, experienceName, options) {
-    logger.info(`Fetching md file ${mdPath}`);
-    const response = await fetchWithRetry(mdPath, options);
-    if (response.status) {
-        const content = await response.text();
-        logger.info(`Content of the md file ${content}`);
-        if (content.includes(experienceName) || content.includes(gbStyleExpression)) {
-            logger.info('Content contains experience name or graybox styles');
-            const state = { content: { data: content }, log: '' };
-            await parseMarkdown(state);
-            const { mdast } = state.content;
-            replaceAllGrayboxReferences(mdast.children, experienceName, grayboxStylesRegex);
-            logger.info('All links replaced');
-            return await generateDocxFromMdast(mdast);
-        }
+async function updateDocument(mdPath, expName, options = {}){
+    firstGtRows = [];
+    const response = await fetchWithRetry(`${mdPath}`, options);
+    const content = await response.text();
+    if (content.includes(expName) || content.includes(gbStyleExpression)) {
+        const state = { content: { data: content }, log: '' };
+        await parseMarkdown(state);
+        const { mdast } = state.content;
+        updateExperienceNameFromLinks(mdast.children, expName);
+        console.log('All links replaced');
+        iterateGtRowsToReplaceStyles();
+        console.log('All styles replaced');
+        //generated docx file from updated mdast
+        const docx = await generateDocxFromMdast(mdast);
+        //TODO promote this docx file
+        console.log('Mdast to Docx file conversion done');
     }
 }
 
 /**
- * Replace all graybox references in the given mdast with the provided experience name and graybox style pattern.
+ * Replace all relative link references in the given mdast with the provided experience name and graybox style pattern.
  * @param {Array} mdast - The mdast to be updated.
  * @param {string} expName - The name of the experience.
  * @param {RegExp} grayboxStylePattern - The pattern to match graybox styles.
  */
-function replaceAllGrayboxReferences(mdast, expName, grayboxStylePattern) {
+const updateExperienceNameFromLinks = (mdast, expName) => {
     if (mdast) {
-        logger.info('Replacing all graybox references');
         mdast.forEach((child) => {
+                if (child.type === 'gridTable') {
+                    firstGtRows.push(findFirstGtRowInNode(child));
+                }
                 //remove experience name from links on the document
                 if (child.type === 'link' && child.url && child.url.includes(expName)) {
-                    logger.info(`Replacing experience name from link ${child.url}`);
                     child.url = child.url.replaceAll(expName, emptyString);
-                    logger.info(`Link after replacement ${child.url}`);
-                }
-                //replace all graybox styles from blocks and text
-                if (child.type === 'text' && child.value && child.value.includes(gbStyleExpression)) {
-                    child.value = child.value.replace(grayboxStylesRegex, emptyString)
-                        .replace('()', emptyString).replace(', )', ')');
                 }
                 if (child.children) {
-                    replaceAllGrayboxReferences(child.children, expName, grayboxStylePattern);
+                    updateExperienceNameFromLinks(child.children, expName);
                 }
             }
         );
     }
 }
+
+/**
+ * Helper function, iterates through the firstGtRows array and replaces graybox styles for each row.
+ */
+const iterateGtRowsToReplaceStyles = () => {
+    firstGtRows.forEach((gtRow) => {
+        if (gtRow && gtRow.children) {
+            replaceGrayboxStyles(gtRow);
+        }
+    });
+}
+
+/**
+ * Replaces all graybox styles from blocks and text.
+ * 
+ * @param {object} node - The node to process.
+ * @returns {void}
+ */
+const replaceGrayboxStyles = (node) => {
+    //replace all graybox styles from blocks and text
+    if (node && node.type === 'text' && node.value && node.value.includes(gbStyleExpression)) {
+        console.log(node);
+        node.value = node.value.replace(grayboxStylesRegex, emptyString)
+            .replace('()', emptyString).replace(', )', ')');
+        console.log('updated value>>  ');
+        console.log(node);
+        return;
+    }
+    if (node.children) {
+        node.children.forEach((child) => {
+            replaceGrayboxStyles(child);
+        });
+    }
+}
+
+/**
+ * Finds the first 'gtRow' node in the given node or its children.
+ * @param {Object} node - The node to search in.
+ * @returns {Object|undefined} - The first 'gtRow' node found, or undefined if not found.
+ */
+function findFirstGtRowInNode(node) {
+    if (node && node.type === 'gtRow') {
+        return node;
+    }
+    if (node.children) {
+        for (const child of node.children) {
+            return findFirstGtRowInNode(child);
+        }
+    }
+}
+
 
 /**
  * Generate a Docx file from the given mdast.
