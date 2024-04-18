@@ -22,6 +22,7 @@ const { fetchWithRetry } = require('./sharepoint');
 const gbStyleExpression = 'gb-';//graybox style expression. need to revisit if there are any more styles to be considered.
 const emptyString = '';
 const grayboxStylesRegex = new RegExp('gb-[a-zA-Z0-9,._-]*', 'g');
+const gbDomainSuffix = '-graybox';
 const logger = getAioLogger();
 let firstGtRows = [];
 
@@ -37,7 +38,7 @@ async function updateDocument(mdPath, expName, options = {}){
     firstGtRows = [];
     const response = await fetchWithRetry(`${mdPath}`, options);
     const content = await response.text();
-    if (content.includes(expName) || content.includes(gbStyleExpression)) {
+    if (content.includes(expName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
         const state = { content: { data: content }, log: '' };
         await parseMarkdown(state);
         const { mdast } = state.content;
@@ -65,8 +66,8 @@ const updateExperienceNameFromLinks = (mdast, expName) => {
                     firstGtRows.push(findFirstGtRowInNode(child));
                 }
                 //remove experience name from links on the document
-                if (child.type === 'link' && child.url && child.url.includes(expName)) {
-                    child.url = child.url.replaceAll(expName, emptyString);
+                if (child.type === 'link' && child.url && (child.url.includes(expName) || child.url.includes(gbDomainSuffix))) {
+                    child.url = child.url.replaceAll(expName, emptyString).replaceAll(gbDomainSuffix, emptyString);
                 }
                 if (child.children) {
                     updateExperienceNameFromLinks(child.children, expName);
