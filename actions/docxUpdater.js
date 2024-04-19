@@ -43,13 +43,13 @@ async function updateDocument(mdPath, expName, options = {}){
         await parseMarkdown(state);
         const { mdast } = state.content;
         updateExperienceNameFromLinks(mdast.children, expName);
-        console.log('All links replaced');
+        logger.info('Experience name removed from links');
         iterateGtRowsToReplaceStyles();
-        console.log('All styles replaced');
+        logger.info('Graybox styles removed');
         //generated docx file from updated mdast
         const docx = await generateDocxFromMdast(mdast);
         //TODO promote this docx file
-        console.log('Mdast to Docx file conversion done');
+        logger.info('Mdast to Docx file conversion done');
     }
 }
 
@@ -67,7 +67,8 @@ const updateExperienceNameFromLinks = (mdast, expName) => {
                 }
                 //remove experience name from links on the document
                 if (child.type === 'link' && child.url && (child.url.includes(expName) || child.url.includes(gbDomainSuffix))) {
-                    child.url = child.url.replaceAll(expName, emptyString).replaceAll(gbDomainSuffix, emptyString);
+                    child.url = child.url.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                    logger.info(`Link updated: ${child.url}`);
                 }
                 if (child.children) {
                     updateExperienceNameFromLinks(child.children, expName);
@@ -97,11 +98,11 @@ const iterateGtRowsToReplaceStyles = () => {
 const replaceGrayboxStyles = (node) => {
     //replace all graybox styles from blocks and text
     if (node && node.type === 'text' && node.value && node.value.includes(gbStyleExpression)) {
-        console.log(node);
+        logger.info(node);
         node.value = node.value.replace(grayboxStylesRegex, emptyString)
             .replace('()', emptyString).replace(', )', ')');
-        console.log('updated value>>  ');
-        console.log(node);
+        logger.info('updated value>>  ');
+        logger.info(node);
         return;
     }
     if (node.children) {
