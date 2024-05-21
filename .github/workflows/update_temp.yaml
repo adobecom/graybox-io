@@ -1,0 +1,69 @@
+name: AIO App CI
+
+on:
+  push:
+    branches:
+      - stage-env-check
+jobs:
+  deploy:
+    name: Deploy to Stage
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 1
+      matrix:
+        node-version: ['18']
+        os: [ubuntu-latest]
+    steps:
+      - name: Check Repo Variables
+        run: |
+          echo "GROUP_CHECK_URL : $GROUP_CHECK_URL"
+          echo "GRAYBOX_USER_GROUPS : $GRAYBOX_USER_GROUPS"
+          echo "ENABLE_PREVEW : $ENABLE_PREVEW"
+        env:
+          GROUP_CHECK_URL: ${{ vars.GROUP_CHECK_URL }}
+          GRAYBOX_USER_GROUPS: ${{ vars.GRAYBOX_USER_GROUPS }}
+          ENABLE_PREVEW: ${{ vars.ENABLE_PREVEW }}
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: npm install
+        run: npm i
+      - name: Setup CLI
+        uses: adobe/aio-cli-setup-action@1.3.0
+        with:
+          os: ${{ matrix.os }}
+          version: 10.x.x
+      - name: Build
+        env:
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE_STAGE }}     
+        uses: adobe/aio-apps-action@3.3.0
+        with:
+          os: ${{ matrix.os }}
+          command: build
+      - name: Deploy
+        env:
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE_STAGE }}
+          AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH_STAGE }}
+          BULK_PREVIEW_CHECK_INTERVAL: ${{ vars.BULK_PREVIEW_CHECK_INTERVAL }}
+          CERT_KEY: ${{ secrets.CERT_KEY }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+          CERT_THUMB_PRINT: ${{ secrets.CERT_THUMB_PRINT }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          ENABLE_PREVEW: ${{ vars.ENABLE_PREVEW }}
+          HELIX_ADMIN_API_KEYS: ${{ secrets.HELIX_ADMIN_API_KEYS }}
+          GRAYBOX_USER_GROUPS: ${{ vars.GRAYBOX_USER_GROUPS }}
+          GROUP_CHECK_URL: ${{ vars.GROUP_CHECK_URL }}
+          MAX_BULK_PREVIEW_CHECKS: ${{ vars.MAX_BULK_PREVIEW_CHECKS }}
+          SP_AUTHORITY: ${{ secrets.SP_AUTHORITY }}
+          SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+          SP_SITE: ${{ secrets.SP_SITE }}
+          SPLUNK_HEC__HEC_TOKEN: ${{ secrets.SPLUNK_HEC_TOKEN_STAGE }}
+          TENANT_ID: ${{ secrets.TENANT_ID }}
+        uses: adobe/aio-apps-action@3.3.0
+        with:
+          os: ${{ matrix.os }}
+          command: deploy
+          noPublish: true
