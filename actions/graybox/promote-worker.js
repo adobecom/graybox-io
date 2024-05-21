@@ -58,8 +58,7 @@ async function main(params) {
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
-    logger.info(`Files in graybox folder in ${experienceName}`);
-    logger.info(JSON.stringify(gbFiles));
+    logger.info(`Files in graybox folder in ${experienceName} :: ${JSON.stringify(gbFiles)}`);
 
     // create batches to process the data
     const batchArray = [];
@@ -95,13 +94,13 @@ async function main(params) {
         const sFailedPreviews = failedPreviews.length > 0 ? `Failed Previews(Promote won't happen for these): \n${failedPreviews.join('\n')}` : '';
         const excelValues = [['Preview completed', toUTCStr(new Date()), sFailedPreviews]];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues, true);
-        logger.info('SUNIL ::: Excel updated with Preview Status');
+        logger.info('Excel updated with Preview Status');
 
         // Update Promote Status
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
         const promoteExcelValues = [['Promote completed', toUTCStr(new Date()), sFailedPromoteStatuses]];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues, true);
-        logger.info('SUNIL ::: Excel updated with Promote Status');
+        logger.info('Excel updated with Promote Status');
     }
 
     const responsePayload = 'Graybox Promote Worker action completed.';
@@ -144,8 +143,6 @@ async function promoteFiles(previewStatuses, experienceName, helixAdminApiKey, s
                             logger.info(`Docx file generated for ${stat.path}`);
                             // Save file Destination full path with file name and extension
                             const destinationFilePath = `${stat.path.substring(0, stat.path.lastIndexOf('/') + 1).replace('/'.concat(experienceName), '')}${stat.fileName}`;
-
-                            logger.info(`Destination File Path ::: ${destinationFilePath}`);
                             const saveStatus = await sharepoint.saveFile(docx, destinationFilePath);
 
                             if (!saveStatus || !saveStatus.success) {
@@ -158,9 +155,7 @@ async function promoteFiles(previewStatuses, experienceName, helixAdminApiKey, s
                         logger.info(`Using promoteCopy for ${stat.path}`);
                         const copySourceFilePath = `${stat.path.substring(0, stat.path.lastIndexOf('/') + 1)}${stat.fileName}`; // Copy Source full path with file name and extension
                         const copyDestinationFolder = `${stat.path.substring(0, stat.path.lastIndexOf('/')).replace('/'.concat(experienceName), '')}`; // Copy Destination folder path, no file name
-
-                        logger.info(`Promote Copy Source File Path ::: ${copySourceFilePath}`);
-                        logger.info(`Promote Copy Destination Folder ::: ${copyDestinationFolder}`);
+                        logger.info(`Promoting ::: ${copySourceFilePath} to ${copyDestinationFolder}`);
                         const promoteCopyFileStatus = await sharepoint.promoteCopy(copySourceFilePath, copyDestinationFolder, stat.fileName, sp);
 
                         if (!promoteCopyFileStatus) {
@@ -182,7 +177,6 @@ async function promoteFiles(previewStatuses, experienceName, helixAdminApiKey, s
 async function findAllFiles(experienceName, appConfig, sharepoint) {
     const sp = await appConfig.getSpConfig();
     const options = await sharepoint.getAuthorizedRequestOption({ method: 'GET' });
-    logger.info(`Options ::: ${JSON.stringify(options)}`);
     const promoteIgnoreList = appConfig.getPromoteIgnorePaths();
 
     return findAllGrayboxFiles({
@@ -202,9 +196,6 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
 async function findAllGrayboxFiles({
     baseURI, options, gbFolders, promoteIgnoreList, downloadBaseURI, experienceName, sharepoint
 }) {
-    logger.info('SUNIL ::: Inside findAllGrayboxFiles');
-    logger.info(`GB Folders ::: ${JSON.stringify(gbFolders)}`);
-
     const gbRoot = baseURI.split(':').pop();
     // Regular expression to select the gbRoot and anything before it
     // Eg: the regex selects "https://<sharepoint-site>:/<app>-graybox"
@@ -214,11 +205,9 @@ async function findAllGrayboxFiles({
     const gbFiles = [];
     while (gbFolders.length !== 0) {
         const uri = `${baseURI}${gbFolders.shift()}:/children?$top=${MAX_CHILDREN}`;
-        logger.info(`URI ::: ${uri}`);
         // eslint-disable-next-line no-await-in-loop
         const res = await sharepoint.fetchWithRetry(uri, options);
         if (res.ok) {
-            logger.info(`Response OK for ${uri}`);
             // eslint-disable-next-line no-await-in-loop
             const json = await res.json();
             // eslint-disable-next-line no-await-in-loop

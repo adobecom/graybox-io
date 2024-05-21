@@ -44,10 +44,8 @@ class Sharepoint {
 
     // eslint-disable-next-line default-param-last
     async getAuthorizedRequestOption({ body = null, json = true, method = 'GET' } = {}) {
-        const logger = getAioLogger();
         const appSpToken = await this.sharepointAuth.getAccessToken();
         const bearer = `Bearer ${appSpToken}`;
-        logger.info(`Bearer token ${bearer}`);
 
         const headers = new Headers();
         headers.append('Authorization', bearer);
@@ -56,11 +54,6 @@ class Sharepoint {
             headers.append('Accept', 'application/json');
             headers.append('Content-Type', 'application/json');
         }
-        const headersObject = {};
-        headers.forEach((value, key) => {
-            headersObject[key] = value;
-        });
-        logger.info(`Headers :: ${JSON.stringify(headersObject)}`);
 
         const options = {
             method,
@@ -70,7 +63,7 @@ class Sharepoint {
         if (body) {
             options.body = typeof body === 'string' ? body : JSON.stringify(body);
         }
-        logger.info(`OPTIONS :: ${JSON.stringify(options)}`);
+
         return options;
     }
 
@@ -291,17 +284,12 @@ class Sharepoint {
         const leafPathLst = uniqPathLst.filter((e) => uniqPathLst.findIndex((e1) => e1.indexOf(`${e}/`) >= 0) < 0);
         // logger.info(`Unique path list ${JSON.stringify(leafPathLst)}`);
         try {
-            logger.info('bulkCreateFolders started');
             const promises = leafPathLst.map((folder) => this.createFolder(folder, isGraybox));
-            logger.info('Got createfolder promises and waiting....');
             createtFolderStatuses.push(...await Promise.all(promises));
-            logger.info(`bulkCreateFolders completed ${createtFolderStatuses?.length}`);
-            // logger.info(`bulkCreateFolders statuses ${JSON.stringify(createtFolderStatuses)}`);
         } catch (error) {
             logger.info('Error while creating folders');
             logger.info(error?.stack);
         }
-        logger.info(`bulkCreateFolders returning ${createtFolderStatuses?.length}`);
         return createtFolderStatuses;
     }
 
@@ -436,7 +424,6 @@ class Sharepoint {
 
     async updateExcelTable(excelPath, tableName, values, isGraybox = false) {
         const logger = getAioLogger();
-        logger.info('In updateExcelTable()');
         logger.info(`excelPath: ${excelPath}, tableName: ${tableName}, values: ${values}`);
         const sp = await this.appConfig.getSpConfig();
         let itemId = '';

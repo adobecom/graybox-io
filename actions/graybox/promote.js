@@ -24,7 +24,7 @@ const AppConfig = require('../appConfig');
 async function main(params) {
     const logger = getAioLogger();
     const ow = openwhisk();
-    let responsePayload = 'Graybox Promote action invoked 8';
+    let responsePayload = 'Graybox Promote action invoked';
     logger.info(responsePayload);
     const appConfig = new AppConfig(params);
     try {
