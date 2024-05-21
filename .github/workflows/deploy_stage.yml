@@ -18,9 +18,11 @@ jobs:
         run: |
           echo "GROUP_CHECK_URL : $GROUP_CHECK_URL"
           echo "GRAYBOX_USER_GROUPS : $GRAYBOX_USER_GROUPS"
+          echo "ENABLE_PREVEW : $ENABLE_PREVEW"
         env:
           GROUP_CHECK_URL: ${{ vars.GROUP_CHECK_URL }}
           GRAYBOX_USER_GROUPS: ${{ vars.GRAYBOX_USER_GROUPS }}
+          ENABLE_PREVEW: ${{ vars.ENABLE_PREVEW }}
       - name: Checkout
         uses: actions/checkout@v4
       - name: Use Node.js ${{ matrix.node-version }}
