@@ -72,7 +72,7 @@ class HelixUtils {
                 success: false, path, fileName: '', resourcePath: '', responseCode: ''
             }
         ));
-        getAioLogger().info(`prevStatuses :: ${JSON.stringify(prevStatuses)}`;
+        getAioLogger().info(`prevStatuses: ${JSON.stringify(prevStatuses)}`);
         if (!prevStatuses.length) {
             return prevStatuses;
         }
