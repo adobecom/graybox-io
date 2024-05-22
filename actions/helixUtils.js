@@ -91,7 +91,8 @@ class HelixUtils {
 
             const helixAdminApiKey = this.getAdminApiKey();
 
-            getAioLogger().info(`helixAdminApiKey :: ${JSON.stringify(helixAdminApiKey)});
+            getAioLogger().info(`helixAdminApiKey: ${JSON.stringify(helixAdminApiKey)}`);
+
             if (helixAdminApiKey) {
                 options.headers.append('Authorization', `token ${helixAdminApiKey}`);
             }
