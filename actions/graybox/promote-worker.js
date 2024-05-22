@@ -45,6 +45,7 @@ const gbDomainSuffix = '-graybox';
 async function main(params) {
     logger.info('Graybox Promote Worker invoked');
 
+    logger.info(`Before configuring appConfig:: ${JSON.stringify(params)}`);
     appConfig.setAppConfig(params);
     const { gbRootFolder, experienceName } = appConfig.getPayload();
     const { projectExcelPath } = appConfig.getPayload();
