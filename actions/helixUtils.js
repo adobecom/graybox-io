@@ -52,6 +52,7 @@ class HelixUtils {
     canBulkPreview() {
         const repo = this.getRepo();
         const { enablePreview } = appConfig.getConfig();
+        getAioLogger().info(`enablePreview :: ${enablePreview}`);
         const repoRegexArr = enablePreview.map((ps) => new RegExp(`^${ps}$`));
         return true && repoRegexArr.find((rx) => rx.test(repo));
     }
@@ -71,6 +72,7 @@ class HelixUtils {
                 success: false, path, fileName: '', resourcePath: '', responseCode: ''
             }
         ));
+        getAioLogger().info(`prevStatuses :: ${JSON.stringify(prevStatuses)}`;
         if (!prevStatuses.length) {
             return prevStatuses;
         }
@@ -88,6 +90,8 @@ class HelixUtils {
             };
 
             const helixAdminApiKey = this.getAdminApiKey();
+
+            getAioLogger().info(`helixAdminApiKey :: ${JSON.stringify(helixAdminApiKey)});
             if (helixAdminApiKey) {
                 options.headers.append('Authorization', `token ${helixAdminApiKey}`);
             }
