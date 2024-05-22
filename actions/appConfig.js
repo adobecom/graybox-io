@@ -65,6 +65,8 @@ class AppConfig {
 
         this.extractPrivateKey();
 
+        getAioLogger().debug(`params.enablePreview ${params.enablePreview}`);
+        
         payload.ext = {
             urlInfo: payload.adminPageUri ? new UrlInfo(payload.adminPageUri) : null
         };
