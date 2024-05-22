@@ -31,6 +31,9 @@ class AppConfig {
     configMap = { payload: {} };
 
     setAppConfig(params) {
+        getAioLogger().info(`While configuring appConfig:: ${JSON.stringify(params)}`);
+        getAioLogger().info(`before setting params.enablePreview ${params.enablePreview}`);
+
         const payload = this.initPayload();
         // Called during action start to cleanup old entries
         this.removeOldPayload();
@@ -65,7 +68,7 @@ class AppConfig {
 
         this.extractPrivateKey();
 
-        getAioLogger().debug(`params.enablePreview ${params.enablePreview}`);
+        getAioLogger().info(`params.enablePreview ${params.enablePreview}`);
         
         payload.ext = {
             urlInfo: payload.adminPageUri ? new UrlInfo(payload.adminPageUri) : null
