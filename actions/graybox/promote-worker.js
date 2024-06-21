@@ -53,7 +53,7 @@ async function main(params) {
 
     // Update Promote Status
     const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '']];
-    await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteTriggeredExcelValues);
+    // await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteTriggeredExcelValues);
 
     logger.info(`GB ROOT FOLDER ::: ${gbRootFolder}`);
     logger.info(`GB EXP NAME ::: ${experienceName}`);
@@ -94,7 +94,7 @@ async function main(params) {
         const sFailedPreviews = failedPreviews.length > 0 ? `Failed Previews(Promote won't happen for these): \n${failedPreviews.join('\n')}` : '';
         const excelValues = [['Preview completed', toUTCStr(new Date()), sFailedPreviews]];
         // Update Preview Status
-        await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
+        // await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
 
         // Get the Helix Admin API Key for the Graybox content tree, needed for accessing (with auth) Images in graybox tree
         const helixAdminApiKey = helixUtils.getAdminApiKey(true);
@@ -106,7 +106,7 @@ async function main(params) {
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
         const promoteExcelValues = [['Promote completed', toUTCStr(new Date()), sFailedPromoteStatuses]];
 
-        await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
+        // await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
 
         // Handle the extensions of promoted files
         const promotedPaths = promotes.map((promote) => handleExtension(promote));
@@ -123,7 +123,7 @@ async function main(params) {
 
         const promotedExcelValues = [['Promoted Files Preview completed', toUTCStr(new Date()), sFailedPromotedPreviews]];
         // Update Promoted Preview Status
-        await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promotedExcelValues);
+        // await updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promotedExcelValues);
         responsePayload = 'Graybox Promote Worker action completed.';
     } else {
         responsePayload = 'Bulk Preview not enabled for Graybox Content Tree';
