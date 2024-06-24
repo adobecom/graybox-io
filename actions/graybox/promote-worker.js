@@ -52,13 +52,12 @@ async function main(params) {
     const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '']];
     await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteTriggeredExcelValues);
 
-    logger.info(`SUNIL ::: GB ROOT FOLDER ::: ${gbRootFolder}`);
-    logger.info(`SUNIL ::: GB EXP NAME ::: ${experienceName}`);
+    logger.info(`GB ROOT FOLDER ::: ${gbRootFolder}`);
+    logger.info(`GB EXP NAME ::: ${experienceName}`);
 
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
-    logger.info(`SUNIL ::: Files in graybox folder in ${experienceName} :: ${JSON.stringify(gbFiles)}`);
 
     // create batches to process the data
     const batchArray = [];
