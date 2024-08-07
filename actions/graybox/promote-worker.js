@@ -16,6 +16,7 @@
 ************************************************************************* */
 
 const fetch = require('node-fetch');
+const initFilesWrapper = require('./filesWrapper');
 const {
     getAioLogger, handleExtension, isFilePatternMatched, toUTCStr
 } = require('../utils');
@@ -26,7 +27,8 @@ const Sharepoint = require('../sharepoint');
 
 const logger = getAioLogger();
 const MAX_CHILDREN = 1000;
-const BATCH_REQUEST_PREVIEW = 200;
+// const BATCH_REQUEST_PREVIEW = 500;
+const BATCH_REQUEST_PREVIEW = 1; // TODO remove this line and uncomment the above line after testing
 
 const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
 const gbDomainSuffix = '-graybox';
@@ -44,8 +46,11 @@ async function main(params) {
     logger.info('Graybox Promote Worker invoked');
 
     const appConfig = new AppConfig(params);
-    const { gbRootFolder, experienceName } = appConfig.getPayload();
-    const { projectExcelPath } = appConfig.getPayload();
+    const {
+        spToken, adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath, draftsOnly
+    } = appConfig.getPayload();
+
+    const filesWrapper = await initFilesWrapper(logger);
     const sharepoint = new Sharepoint(appConfig);
 
     // Update Promote Status
@@ -59,149 +64,83 @@ async function main(params) {
     // NOTE: This does not capture content inside the locale/expName folders yet
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
 
+    // Create Batch Status JSON
+    const batchStatusJson = '{"batch_1":"initiated"}';
+    const batchStatusJsonObject = JSON.parse(batchStatusJson);
+
+    // Create Project Preview Status JSON
+    const previewStatusJson = [];
+
+    // Preview Errors JSON
+    const projectPreviewErrorsJson = [];
+
     // create batches to process the data
-    const batchArray = [];
+    const gbFilesBatchArray = [];
+    const writeBatchJsonPromises = [];
     for (let i = 0; i < gbFiles.length; i += BATCH_REQUEST_PREVIEW) {
         const arrayChunk = gbFiles.slice(i, i + BATCH_REQUEST_PREVIEW);
-        batchArray.push(arrayChunk);
+        gbFilesBatchArray.push(arrayChunk);
+        const batchName = `batch_${i + 1}`;
+        batchStatusJsonObject[`${batchName}`] = 'initiated';
+
+        // Each Files Batch is written to a batch_n.json file
+        writeBatchJsonPromises.push(filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batches/${batchName}.json`, arrayChunk));
     }
+
+    await Promise.all(writeBatchJsonPromises);
+
+    const inputParams = {};
+    inputParams.rootFolder = rootFolder;
+    inputParams.gbRootFolder = gbRootFolder;
+    inputParams.projectExcelPath = projectExcelPath;
+    inputParams.experienceName = experienceName;
+    inputParams.spToken = spToken;
+    inputParams.adminPageUri = adminPageUri;
+    inputParams.draftsOnly = draftsOnly;
+    inputParams.promoteIgnorePaths = promoteIgnorePaths;
+
+    // convert the ignoreUserCheck boolean to string, so the string processing in the appConfig -> ignoreUserCheck works
+    inputParams.ignoreUserCheck = `${appConfig.ignoreUserCheck()}`;
+
+    // Create Ongoing Projects JSON
+    const ongoingProjectsJson = `[{"project_path":"${gbRootFolder}/${experienceName}","status":"initiated"}]`;
+
+    // Create Project Status JSON
+    const projectStatusJson = `{"status":"initiated", "params": ${JSON.stringify(inputParams)}}`;
+    const projectStatusJsonObject = JSON.parse(projectStatusJson);
+
+    logger.info(`projectStatusJson: ${projectStatusJson}`);
+
+    // write to JSONs to AIO Files for Ongoing Projects and Project Status
+    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', ongoingProjectsJson);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJsonObject);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJsonObject);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`, previewStatusJson);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`, projectPreviewErrorsJson);
+
+    // read properties of JSON from AIO Files
+    const props = await filesWrapper.readProperties('graybox_promote/ongoing_projects.json');
+    logger.info(`props: ${JSON.stringify(props)}`);
+    const projectStatusJsonProps = await filesWrapper.readProperties(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
+    logger.info(`status props: ${JSON.stringify(projectStatusJsonProps)}`);
+    const projectPreviewStatusJsonProps = await filesWrapper.readProperties(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`);
+    logger.info(`preivew status props: ${JSON.stringify(projectPreviewStatusJsonProps)}`);
+
+    // read Graybox Project Json from AIO Files
+    const json = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
+    logger.info(`Ongoing Projects Json: ${JSON.stringify(json)}`);
+    const statusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
+    logger.info(`Project Status Json: ${JSON.stringify(statusJson)}`);
+    const projectBatchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`);
+    logger.info(`Project Batch Status Json: ${JSON.stringify(projectBatchStatusJson)}`);
 
     // process data in batches
-    const helixUtils = new HelixUtils(appConfig);
-    const previewStatuses = [];
-    let failedPreviews = [];
-    const promotedPreviewStatuses = [];
-    let promotedFailedPreviews = [];
     let responsePayload;
-    if (helixUtils.canBulkPreview(true)) {
-        logger.info('Bulk Previewing Graybox files');
-        const paths = [];
-        batchArray.forEach((batch) => {
-            batch.forEach((gbFile) => paths.push(handleExtension(gbFile.filePath)));
-        });
-        previewStatuses.push(await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW, experienceName, true));
-
-        failedPreviews = previewStatuses.flatMap((statusArray) => statusArray.filter((status) => !status.success)).map((status) => status.path);
-
-        logger.info('Updating project excel file with status');
-        const sFailedPreviews = failedPreviews.length > 0 ? `Failed Previews(Promote won't happen for these): \n${failedPreviews.join('\n')}` : '';
-        const excelValues = [['Preview completed', toUTCStr(new Date()), sFailedPreviews]];
-        // Update Preview Status
-        await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
-
-        // Get the Helix Admin API Key for the Graybox content tree, needed for accessing (with auth) Images in graybox tree
-        const helixAdminApiKey = helixUtils.getAdminApiKey(true);
-
-        // Promote Graybox files to the default content tree
-        const { promotes, failedPromotes } = await promoteFiles(previewStatuses, experienceName, helixAdminApiKey, sharepoint, helixUtils, appConfig);
-
-        // Update Promote Status
-        const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
-        const promoteExcelValues = [['Promote completed', toUTCStr(new Date()), sFailedPromoteStatuses]];
-        await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
-
-        // Handle the extensions of promoted files
-        const promotedPaths = promotes.map((promote) => handleExtension(promote));
-
-        // Perform Preview of all Promoted files in the Default Content Tree
-        if (helixUtils.canBulkPreview(false)) {
-            promotedPaths.forEach((promote) => logger.info(`Promoted file in Default folder: ${promote}`));
-            // Don't pass the experienceName & isGraybox params for the default content tree
-            promotedPreviewStatuses.push(await helixUtils.bulkPreview(promotedPaths, helixUtils.getOperations().PREVIEW));
-        }
-
-        promotedFailedPreviews = promotedPreviewStatuses.flatMap((statusArray) => statusArray.filter((status) => !status.success)).map((status) => status.path);
-        const sFailedPromotedPreviews = promotedFailedPreviews.length > 0 ? `Failed Promoted Previews: \n${promotedFailedPreviews.join('\n')}` : '';
-
-        const promotedExcelValues = [['Promoted Files Preview completed', toUTCStr(new Date()), sFailedPromotedPreviews]];
-        // Update Promoted Preview Status
-        await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promotedExcelValues);
-        responsePayload = 'Graybox Promote Worker action completed.';
-    } else {
-        responsePayload = 'Bulk Preview not enabled for Graybox Content Tree';
-    }
+    responsePayload = 'Graybox Promote Worker action completed.';
     logger.info(responsePayload);
     return {
         body: responsePayload,
     };
-}
-
-/**
-* Promote Graybox files to the default content tree
- * @param {*} previewStatuses file preview statuses
- * @param {*} experienceName graybox experience name
- * @param {*} helixAdminApiKey helix admin api key for performing Mdast to Docx conversion
- * @param {*} sharepoint sharepoint instance
- * @param {*} helixUtils helix utils instance
- * @param {*} appConfig app config instance
- * @returns JSON array of successful & failed promotes
- */
-async function promoteFiles(previewStatuses, experienceName, helixAdminApiKey, sharepoint, helixUtils, appConfig) {
-    const promotes = [];
-    const failedPromotes = [];
-    const options = {};
-    // Passing isGraybox param true to fetch graybox Hlx Admin API Key
-    const grayboxHlxAdminApiKey = helixUtils.getAdminApiKey(true);
-    if (grayboxHlxAdminApiKey) {
-        options.headers = new fetch.Headers();
-        options.headers.append('Authorization', `token ${grayboxHlxAdminApiKey}`);
-    }
-
-    // iterate through preview statuses, generate docx files and promote them
-    const allPromises = previewStatuses.map(async (status) => {
-        // check if status is an array and iterate through the array
-        if (Array.isArray(status)) {
-            const promises = status.map(async (stat) => {
-                if (stat.success && stat.mdPath) {
-                    const response = await sharepoint.fetchWithRetry(`${stat.mdPath}`, options);
-                    const content = await response.text();
-                    let docx;
-                    const sp = await appConfig.getSpConfig();
-
-                    if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
-                        // Process the Graybox Styles and Links with Mdast to Docx conversion
-                        docx = await updateDocument(content, experienceName, helixAdminApiKey);
-                        if (docx) {
-                            logger.info(`Docx file generated for ${stat.path}`);
-                            // Save file Destination full path with file name and extension
-                            const destinationFilePath = `${stat.path.substring(0, stat.path.lastIndexOf('/') + 1).replace('/'.concat(experienceName), '')}${stat.fileName}`;
-                            const saveStatus = await sharepoint.saveFileSimple(docx, destinationFilePath);
-
-                            if (saveStatus?.success) {
-                                promotes.push(destinationFilePath);
-                            } else if (saveStatus?.errorMsg?.includes('File is locked')) {
-                                failedPromotes.push(`${destinationFilePath} (locked file)`);
-                            } else {
-                                failedPromotes.push(destinationFilePath);
-                            }
-                        } else {
-                            logger.error(`Error generating docx file for ${stat.path}`);
-                        }
-                    } else {
-                        const copySourceFilePath = `${stat.path.substring(0, stat.path.lastIndexOf('/') + 1)}${stat.fileName}`; // Copy Source full path with file name and extension
-                        const copyDestinationFolder = `${stat.path.substring(0, stat.path.lastIndexOf('/')).replace('/'.concat(experienceName), '')}`; // Copy Destination folder path, no file name
-                        const destFilePath = `${copyDestinationFolder}/${stat.fileName}`;
-
-                        // Download the grayboxed file and save it to default content location
-                        const { fileDownloadUrl } = await sharepoint.getFileData(copySourceFilePath, true);
-                        const file = await sharepoint.getFileUsingDownloadUrl(fileDownloadUrl);
-                        const saveStatus = await sharepoint.saveFileSimple(file, destFilePath);
-
-                        if (saveStatus?.success) {
-                            promotes.push(destFilePath);
-                        } else if (saveStatus?.errorMsg?.includes('File is locked')) {
-                            failedPromotes.push(`${destFilePath} (locked file)`);
-                        } else {
-                            failedPromotes.push(destFilePath);
-                        }
-                    }
-                }
-            });
-            await Promise.all(promises); // await all async functions in the array are executed, before updating the status in the graybox project excel
-        }
-    });
-    await Promise.all(allPromises); // await all async functions in the array are executed, before updating the status in the graybox project excel
-    return { promotes, failedPromotes };
 }
 
 /**
