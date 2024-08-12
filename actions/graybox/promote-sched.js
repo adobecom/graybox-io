@@ -45,6 +45,9 @@ async function main(params) {
         ongoingPorcessedProjects.forEach(async (project) => {
             const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
 
+            // Read the Batch Status in the current project's "batch_status.json" file
+            const batchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/batch_status.json`);
+
             const promoteBatchesJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/promote_batches.json`);
 
             // copy all params from json into the params object
@@ -54,59 +57,62 @@ async function main(params) {
             });
 
             Object.entries(promoteBatchesJson).forEach(async ([batchName, promoteFilePathsArray]) => {
-                // Set the Project & Batch Name in params for the Promote Content Worker Action to read and process
-                params.project = project;
-                params.batchName = batchName;
+                if (batchStatusJson[batchName] === 'processed') {
+                    // Set the Project & Batch Name in params for the Promote Content Worker Action to read and process
+                    params.project = project;
+                    params.batchName = batchName;
 
-                try {
-                    const appConfig = new AppConfig(params);
-                    const grpIds = appConfig.getConfig().grayboxUserGroups;
-                    const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
-                    if (vActData && vActData.code !== 200) {
-                        logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
-                        return vActData;
-                    }
+                    try {
+                        const appConfig = new AppConfig(params);
+                        const grpIds = appConfig.getConfig().grayboxUserGroups;
+                        const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
+                        if (vActData && vActData.code !== 200) {
+                            logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
+                            return vActData;
+                        }
 
-                    return ow.actions.invoke({
-                        name: 'graybox/promote-content-worker',
-                        blocking: false,
-                        result: false,
-                        params
-                    }).then(async (result) => {
-                        logger.info(result);
-                        return {
-                            code: 200,
-                            payload: responsePayload
-                        };
-                    }).catch(async (err) => {
-                        responsePayload = 'Failed to invoke graybox promote action';
+                        return ow.actions.invoke({
+                            name: 'graybox/promote-worker',
+                            blocking: false,
+                            result: false,
+                            params
+                        }).then(async (result) => {
+                            logger.info(result);
+                            return {
+                                code: 200,
+                                payload: responsePayload
+                            };
+                        }).catch(async (err) => {
+                            responsePayload = 'Failed to invoke graybox promote action';
+                            logger.error(`${responsePayload}: ${err}`);
+                            return {
+                                code: 500,
+                                payload: responsePayload
+                            };
+                        });
+                    } catch (err) {
+                        responsePayload = 'Unknown error occurred while invoking Promote Content Worker Action';
                         logger.error(`${responsePayload}: ${err}`);
-                        return {
-                            code: 500,
-                            payload: responsePayload
-                        };
-                    });
-                } catch (err) {
-                    responsePayload = 'Unknown error occurred';
-                    logger.error(`${responsePayload}: ${err}`);
-                    responsePayload = err;
+                        responsePayload = err;
+                    }
                 }
-
+                responsePayload = 'Triggered multiple Promote Content Worker Actions';
                 return {
-                    code: 500,
+                    code: 200,
                     payload: responsePayload,
                 };
             });
         });
     } catch (err) {
-        responsePayload = 'Unknown error occurred';
+        responsePayload = 'Unknown error occurred while processing the projects for Promote';
         logger.error(`${responsePayload}: ${err}`);
         responsePayload = err;
     }
 
+    // No errors while initiating all the Promote Content Worker Action for all the projects
     return {
-        code: 500,
-        payload: responsePayload,
+        code: 200,
+        payload: responsePayload
     };
 }
 

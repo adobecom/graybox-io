@@ -37,7 +37,7 @@ async function main(params) {
         // iterate the JSON array projects and extract the project_path where status is 'initiated'
         const ongoingInitiatedProjects = [];
         projects.forEach((project) => {
-            if (project.status === 'initiated') {
+            if (project.status === 'initiated' || project.status === 'promoted') {
                 ongoingInitiatedProjects.push(project.project_path);
             }
         });

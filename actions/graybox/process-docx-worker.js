@@ -16,8 +16,9 @@
 ************************************************************************* */
 
 const fetch = require('node-fetch');
+const { Readable } = require('stream');
 const {
-    getAioLogger, handleExtension, toUTCStr
+    getAioLogger, toUTCStr
 } = require('../utils');
 const AppConfig = require('../appConfig');
 const HelixUtils = require('../helixUtils');
@@ -36,9 +37,7 @@ async function main(params) {
     logger.info('Graybox Process Docx Action triggered');
 
     const appConfig = new AppConfig(params);
-    const {
-        spToken, adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath, draftsOnly
-    } = appConfig.getPayload();
+    const { gbRootFolder, experienceName, projectExcelPath } = appConfig.getPayload();
 
     const sharepoint = new Sharepoint(appConfig);
     // process data in batches
@@ -68,15 +67,11 @@ async function main(params) {
         helixUtils,
         appConfig,
         filesWrapper,
-        gbRootFolder
+        gbRootFolder,
+        projectExcelPath
     };
     // Promote Graybox files to the default content tree
-    const { promotes, failedPromotes } = await processFiles(processFilesParams);
-
-    // Update Promote Status
-    const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
-    const promoteExcelValues = [['Promote completed', toUTCStr(new Date()), sFailedPromoteStatuses]];
-    await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
+    await processFiles(processFilesParams);
 
     responsePayload = 'Processing of Graybox Content Tree completed';
     logger.info(responsePayload);
@@ -91,10 +86,8 @@ async function main(params) {
 * @returns
 */
 async function processFiles({
-    previewStatuses, experienceName, helixAdminApiKey, sharepoint, helixUtils, appConfig, filesWrapper, gbRootFolder
+    previewStatuses, experienceName, helixAdminApiKey, sharepoint, helixUtils, filesWrapper, gbRootFolder, projectExcelPath
 }) {
-    const promotes = [];
-    const failedPromotes = [];
     const options = {};
     // Passing isGraybox param true to fetch graybox Hlx Admin API Key
     const grayboxHlxAdminApiKey = helixUtils.getAdminApiKey(true);
@@ -102,9 +95,6 @@ async function processFiles({
         options.headers = new fetch.Headers();
         options.headers.append('Authorization', `token ${grayboxHlxAdminApiKey}`);
     }
-
-    // Read the Ongoing Projects JSON file
-    const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
 
     // Read the Project Status in the current project's "status.json" file
     const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
@@ -117,42 +107,39 @@ async function processFiles({
     const copyBatchesJson = {};
     let promoteBatchCount = 0;
     let copyBatchCount = 0;
+    const processDocxErrors = [];
 
     // iterate through preview statuses, generate docx files and create promote & copy batches
     Object.keys(previewStatuses).forEach(async (batchName) => {
-        logger.info(`In Process-doc-worker Processing batch ${batchName}`);
         const batchPreviewStatuses = previewStatuses[batchName];
-        logger.info(`In Process-doc-worker previewStatuses[batchName] ${JSON.stringify(previewStatuses[batchName])} batch ${batchName} with ${batchPreviewStatuses.length} files`);
-        logger.info(`In Process-doc-worker batchStatusJson[batchName] ${batchStatusJson[batchName]}`);
-        logger.info(`In Process-doc-worker batchStatusJson[batchName] === 'initial_preview_done' ${batchStatusJson[batchName] === 'initial_preview_done'}`);
 
         // Check if Step 2 finished, do the Step 3, if the batch status is 'initial_preview_done' then process the batch
         if (batchStatusJson[batchName] === 'initial_preview_done') {
-            logger.info(`In Process-doc-worker batchStatusJson[batchName] ${batchStatusJson[batchName]}`);
-
-            const allPromises = batchPreviewStatuses.map(async (status) => {
+            const allPreviewPromises = batchPreviewStatuses.map(async (status) => {
                 if (status.success && status.mdPath) { // If the file is successfully initial previewed and has a mdPath then process the file
                     const response = await sharepoint.fetchWithRetry(`${status.mdPath}`, options);
                     const content = await response.text();
                     let docx;
-                    const sp = await appConfig.getSpConfig();
 
                     if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
                         // Process the Graybox Styles and Links with Mdast to Docx conversion
                         docx = await updateDocument(content, experienceName, helixAdminApiKey);
                         if (docx) {
                             const destinationFilePath = `${status.path.substring(0, status.path.lastIndexOf('/') + 1).replace('/'.concat(experienceName), '')}${status.fileName}`;
+                            const docxFileStream = Readable.from(docx);
+
                             // Write the processed documents to the AIO folder for docx files
-                            await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/docx${destinationFilePath}`, docx);
+                            await filesWrapper.writeFileFromStream(`graybox_promote${gbRootFolder}/${experienceName}/docx${destinationFilePath}`, docxFileStream);
+
                             // Create Promote Batches
-                            const promoteBatchName = `batch_${promoteBatchCount + 1}`;
-                            logger.info(`In Process-doc-worker Promote Batch Name: ${promoteBatchName}`);
-                            const promoteBatchJson = promoteBatchesJson[promoteBatchName];
-                            logger.info(`In Process-doc-worker Promote Batch JSON: ${JSON.stringify(promoteBatchJson)}`);
+                            // const promoteBatchName = `batch_${promoteBatchCount + 1}`;
+                            // Don't create new batch names, use the same batch names created in the start before initial preview
+                            const promoteBatchJson = promoteBatchesJson[batchName];
                             if (!promoteBatchJson) {
-                                promoteBatchesJson[promoteBatchName] = [];
+                                promoteBatchesJson[batchName] = [];
                             }
-                            promoteBatchesJson[promoteBatchName].push(destinationFilePath);
+                            promoteBatchesJson[batchName].push(destinationFilePath);
+
                             logger.info(`In Process-doc-worker Promote Batch JSON after push: ${JSON.stringify(promoteBatchesJson)}`);
 
                             // If the promote batch count reaches the limit, increment the promote batch count
@@ -161,8 +148,15 @@ async function processFiles({
                             }
                             // Write the promote batches JSON file
                             await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/promote_batches.json`, promoteBatchesJson);
-                            batchStatusJson[batchName] = 'processed';
+                        } else {
+                            processDocxErrors.push(`Error processing docx for ${status.fileName}`);
                         }
+
+                        // Update each Batch Status in the current project's "batch_status.json" file
+                        batchStatusJson[batchName] = 'processed';
+
+                        // Update the Project Status & Batch Status in the current project's "status.json" & updated batch_status.json file respectively
+                        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
                     } else {
                         // Copy Source full path with file name and extension
                         const copySourceFilePath = `${status.path.substring(0, status.path.lastIndexOf('/') + 1)}${status.fileName}`;
@@ -171,13 +165,14 @@ async function processFiles({
                         const copyDestFilePath = `${copyDestinationFolder}/${status.fileName}`;
 
                         // Create Copy Batches
-                        const copyBatchName = `batch_${copyBatchCount + 1}`;
-                        let copyBatchJson = copyBatchesJson[copyBatchName];
+                        // const copyBatchName = `batch_${copyBatchCount + 1}`;
+                        // Don't create new batch names, use the same batch names created in the start before initial preview
+                        let copyBatchJson = copyBatchesJson[batchName];
                         if (!copyBatchJson) {
                             copyBatchJson = {};
                         }
                         copyBatchJson[copySourceFilePath] = copyDestFilePath;
-                        copyBatchesJson[copyBatchName] = copyBatchJson;
+                        copyBatchesJson[batchName] = copyBatchJson;
 
                         // If the copy batch count reaches the limit, increment the copy batch count
                         if (copyBatchCount === BATCH_REQUEST_PROMOTE) {
@@ -187,20 +182,35 @@ async function processFiles({
                         // Write the copy batches JSON file
                         await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/copy_batches.json`, copyBatchesJson);
 
+                        // Update each Batch Status in the current project's "batch_status.json" file
                         batchStatusJson[batchName] = 'processed';
+                        // Update the Project Status & Batch Status in the current project's "status.json" & updated batch_status.json file respectively
+                        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
                     }
                 }
             });
-            await Promise.all(allPromises); // await all async functions in the array are executed, before updating the status in the graybox project excel
-
-            // Update each Batch Status in the current project's "batch_status.json" file
-            batchStatusJson[batchName] = 'processed';
+            await Promise.all(allPreviewPromises); // await all async functions in the array are executed
         }
     });
 
-    // Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
+    // Write the processDocxErrors to the AIO Files
+    if (processDocxErrors.length > 0) {
+        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/process_docx_errors.json`, processDocxErrors);
+    }
+
+    // Update the Project Status in the current project's "status.json" file
+    projectStatusJson.status = 'processed';
+
+    // Update the Project Excel with the Promote Status
+    try {
+        const promoteExcelValues = [['Step 2 of 5: Process Docx completed', toUTCStr(new Date()), '']];
+        await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
+    } catch (err) {
+        logger.error(`Error Occured while updating Excel during Graybox Process Docx Step: ${err}`);
+    }
+
+    // Update the Project Status in JSON files
     updateProjectStatus(batchStatusJson, projectStatusJson, gbRootFolder, experienceName, filesWrapper);
-    return { promotes, failedPromotes };
 }
 
 /**
@@ -214,8 +224,6 @@ async function updateProjectStatus(batchStatusJson, projectStatusJson, gbRootFol
     const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
     // Write the Project Status in the current project's "status.json" file
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
-    // Update the Project Status & Batch Status in the current project's "status.json" & updated batch_status.json file respectively
-    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
 
     // Update the Project Status in the parent "ongoing_projects.json" file
     projects.find((p) => p.project_path === `${gbRootFolder}/${experienceName}`).status = 'processed';

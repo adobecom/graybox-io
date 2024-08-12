@@ -46,6 +46,9 @@ async function main(params) {
             const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
             logger.info(`In Copy-sched Projects Json: ${JSON.stringify(projectStatusJson)}`);
 
+            // Read the Batch Status in the current project's "batch_status.json" file
+            const batchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/batch_status.json`);
+
             const copyBatchesJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/copy_batches.json`);
             // copy all params from json into the params object
             const inputParams = projectStatusJson?.params;
@@ -54,61 +57,62 @@ async function main(params) {
             });
 
             Object.entries(copyBatchesJson).forEach(async ([batchName, copyFilePathsJson]) => {
-                // Set the Project & Batch Name in params for the Copy Content Worker Action to read and process
-                params.project = project;
-                params.batchName = batchName;
+                if (batchStatusJson[batchName] === 'processed') {
+                    // Set the Project & Batch Name in params for the Copy Content Worker Action to read and process
+                    params.project = project;
+                    params.batchName = batchName;
 
-                try {
-                    const appConfig = new AppConfig(params);
-                    const grpIds = appConfig.getConfig().grayboxUserGroups;
-                    const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
-                    if (vActData && vActData.code !== 200) {
-                        logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
-                        return vActData;
-                    }
+                    try {
+                        const appConfig = new AppConfig(params);
+                        const grpIds = appConfig.getConfig().grayboxUserGroups;
+                        const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
+                        if (vActData && vActData.code !== 200) {
+                            logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
+                            return vActData;
+                        }
 
-                    return ow.actions.invoke({
-                        name: 'graybox/copy-content-worker',
-                        blocking: false,
-                        result: false,
-                        params
-                    }).then(async (result) => {
-                        logger.info(result);
-                        return {
-                            code: 200,
-                            payload: responsePayload
-                        };
-                    }).catch(async (err) => {
-                        responsePayload = 'Failed to invoke graybox copy action';
+                        return ow.actions.invoke({
+                            name: 'graybox/copy-worker',
+                            blocking: false,
+                            result: false,
+                            params
+                        }).then(async (result) => {
+                            logger.info(result);
+                            return {
+                                code: 200,
+                                payload: responsePayload
+                            };
+                        }).catch(async (err) => {
+                            responsePayload = 'Failed to invoke graybox copy action';
+                            logger.error(`${responsePayload}: ${err}`);
+                            return {
+                                code: 500,
+                                payload: responsePayload
+                            };
+                        });
+                    } catch (err) {
+                        responsePayload = 'Unknown error occurred while invoking Copy Content Worker Action';
                         logger.error(`${responsePayload}: ${err}`);
-                        return {
-                            code: 500,
-                            payload: responsePayload
-                        };
-                    });
-                } catch (err) {
-                    responsePayload = 'Unknown error occurred';
-                    logger.error(`${responsePayload}: ${err}`);
-                    responsePayload = err;
+                        responsePayload = err;
+                    }
                 }
-
+                responsePayload = 'Triggered multiple Copy Content Worker Actions';
                 return {
-                    code: 500,
+                    code: 200,
                     payload: responsePayload,
                 };
             });
         });
-
-        logger.info(`Params length after: ${Object.keys(params).length}`);
     } catch (err) {
-        responsePayload = 'Unknown error occurred';
+        responsePayload = 'Unknown error occurred while processing the projects for Copy';
         logger.error(`${responsePayload}: ${err}`);
         responsePayload = err;
     }
 
+    // No errors while initiating all the Copy Content Worker Action for all the projects
     return {
-        code: 500,
-        payload: responsePayload,
+        code: 200,
+        payload: responsePayload
     };
 }
 
