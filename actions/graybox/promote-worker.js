@@ -56,7 +56,7 @@ async function main(params) {
     const promoteBatchesJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/promote_batches.json`);
     logger.info(`In Promote-sched Promote Batches Json: ${JSON.stringify(promoteBatchesJson)}`);
 
-    const promoteFilePaths = promoteBatchesJson[batchName] || [];
+    const promoteFilePaths = promoteBatchesJson[batchName].files || [];
 
     logger.info(`In Promote Content Worker, promoteFilePaths: ${JSON.stringify(promoteFilePaths)}`);
     // Process the Promote Content
@@ -98,6 +98,11 @@ async function main(params) {
     // Write the updated batch_status.json file
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
 
+    // Update the Promote Batch Status in the current project's "promote_batches.json" file
+    promoteBatchesJson[batchName].status = 'promoted';
+    // Write the promote batches JSON file
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/promote_batches.json`, promoteBatchesJson);
+
     // Update the Project Excel with the Promote Status
     try {
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
@@ -122,14 +127,14 @@ async function main(params) {
 }
 
 /**
- * Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
+ * Update the Project Status in the current project's "status.json" file & the parent "project_queue.json" file
  * @param {*} gbRootFolder graybox root folder
  * @param {*} experienceName graybox experience name
  * @param {*} filesWrapper filesWrapper object
  * @returns updated project status
  */
 async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper) {
-    const ongoingProjects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
+    const projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
     const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
 
     // Update the Project Status in the current project's "status.json" file
@@ -137,10 +142,14 @@ async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper) {
     logger.info(`In Promote-content-worker After Processing Promote, Project Status Json: ${JSON.stringify(projectStatusJson)}`);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
 
-    // Update the Project Status in the parent "ongoing_projects.json" file
-    ongoingProjects.find((p) => p.project_path === `${gbRootFolder}/${experienceName}`).status = 'promoted';
-    logger.info(`In Promote-content-worker After Processing Promote, OnProjects Json: ${JSON.stringify(ongoingProjects)}`);
-    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', ongoingProjects);
+    // Update the Project Status in the parent "project_queue.json" file
+    const index = projectQueue.findIndex((obj) => obj.projectPath === `${gbRootFolder}/${experienceName}`);
+    if (index !== -1) {
+        // Replace the object at the found index
+        projectQueue[index].status = 'promoted';
+    }
+    logger.info(`In Promote-content-worker After Processing Promote, Project Queue Json: ${JSON.stringify(projectQueue)}`);
+    await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
 }
 
 function exitAction(resp) {

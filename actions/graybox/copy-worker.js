@@ -55,21 +55,24 @@ async function main(params) {
 
     const copyBatchesJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/copy_batches.json`);
 
-    const copyFilePathsJson = copyBatchesJson[batchName] || {};
+    const copyBatchJson = copyBatchesJson[batchName] || {};
+
+    logger.info(`In Copy Worker, Copy File Paths: ${JSON.stringify(copyBatchJson)}`);
 
     // Process the Copy Content
-    const copyPromises = Object.entries(copyFilePathsJson).map(async ([copySourceFilePath, copyDestFilePath]) => {
+    const copyFilePathsJson = copyBatchJson.files || [];
+    const copyPromises = copyFilePathsJson.map(async (copyPathsEntry) => {
         // Download the grayboxed file and save it to default content location
-        const { fileDownloadUrl } = await sharepoint.getFileData(copySourceFilePath, true);
+        const { fileDownloadUrl } = await sharepoint.getFileData(copyPathsEntry.copySourceFilePath, true);
         const file = await sharepoint.getFileUsingDownloadUrl(fileDownloadUrl);
-        const saveStatus = await sharepoint.saveFileSimple(file, copyDestFilePath);
+        const saveStatus = await sharepoint.saveFileSimple(file, copyPathsEntry.copyDestFilePath);
 
         if (saveStatus?.success) {
-            promotes.push(copyDestFilePath);
+            promotes.push(copyPathsEntry.copyDestFilePath);
         } else if (saveStatus?.errorMsg?.includes('File is locked')) {
-            failedPromotes.push(`${copyDestFilePath} (locked file)`);
+            failedPromotes.push(`${copyPathsEntry.copyDestFilePath} (locked file)`);
         } else {
-            failedPromotes.push(copyDestFilePath);
+            failedPromotes.push(copyPathsEntry.copyDestFilePath);
         }
     });
 
@@ -95,6 +98,11 @@ async function main(params) {
     // Write the updated batch_status.json file
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
 
+    // Update the Copy Batch Status in the current project's "copy_batches.json" file
+    copyBatchesJson[batchName].status = 'promoted';
+    // Write the promote batches JSON file
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/copy_batches.json`, copyBatchesJson);
+
     // Update the Project Excel with the Promote Status
     try {
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
@@ -116,23 +124,27 @@ async function main(params) {
 }
 
 /**
- * Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
+ * Update the Project Status in the current project's "status.json" file & the parent "project_queue.json" file
  * @param {*} gbRootFolder graybox root folder
  * @param {*} experienceName graybox experience name
  * @param {*} filesWrapper filesWrapper object
  * @returns updated project status
  */
 async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper) {
-    const ongoingProjects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
+    const projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
     const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
 
     // Update the Project Status in the current project's "status.json" file
     projectStatusJson.status = 'promoted';
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
 
-    // Update the Project Status in the parent "ongoing_projects.json" file
-    ongoingProjects.find((p) => p.project_path === `${gbRootFolder}/${experienceName}`).status = 'promoted';
-    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', ongoingProjects);
+    // Update the Project Status in the parent "project_queue.json" file
+    const index = projectQueue.findIndex((obj) => obj.projectPath === `${gbRootFolder}/${experienceName}`);
+    if (index !== -1) {
+        // Replace the object at the found index
+        projectQueue[index].status = 'promoted';
+    }
+    await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
 }
 
 function exitAction(resp) {

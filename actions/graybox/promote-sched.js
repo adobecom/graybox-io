@@ -18,8 +18,6 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 const openwhisk = require('openwhisk');
 const { getAioLogger } = require('../utils');
-const { validateAction } = require('./validateAction');
-const AppConfig = require('../appConfig');
 const initFilesWrapper = require('./filesWrapper');
 
 async function main(params) {
@@ -31,18 +29,17 @@ async function main(params) {
     const filesWrapper = await initFilesWrapper(logger);
 
     try {
-        const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
-        logger.info(`From Promote-sched Ongoing Projects Json: ${JSON.stringify(projects)}`);
+        let projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
+        logger.info(`From Promote-sched Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
-        // iterate the JSON array projects and extract the project_path where status is 'initiated'
-        const ongoingPorcessedProjects = [];
-        projects.forEach((project) => {
-            if (project.status === 'processed') {
-                ongoingPorcessedProjects.push(project.project_path);
-            }
-        });
+        // Sorting the Promote Projects based on the 'createdTime' property, pick the oldest project
+        projectQueue = projectQueue.sort((a, b) => a.createdTime - b.createdTime);
 
-        ongoingPorcessedProjects.forEach(async (project) => {
+        // Find the First Project where status is 'processed'
+        const projectEntry = projectQueue.find((project) => project.status === 'processed');
+
+        if (projectEntry && projectEntry.projectPath) {
+            const project = projectEntry.projectPath;
             const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
 
             // Read the Batch Status in the current project's "batch_status.json" file
@@ -56,53 +53,48 @@ async function main(params) {
                 params[key] = inputParams[key];
             });
 
-            Object.entries(promoteBatchesJson).forEach(async ([batchName, promoteFilePathsArray]) => {
-                if (batchStatusJson[batchName] === 'processed') {
-                    // Set the Project & Batch Name in params for the Promote Content Worker Action to read and process
-                    params.project = project;
-                    params.batchName = batchName;
+            // Find the first batch where status is 'processed'
+            const batchEntry = Object.entries(promoteBatchesJson)
+                .find(([batchName, promoteBatchJson]) => promoteBatchJson.status === 'processed');
+            const promoteBatchName = batchEntry[0]; // Getting the key i.e. project path from the JSON entry, batchEntry[1] is the value
 
-                    try {
-                        const appConfig = new AppConfig(params);
-                        const grpIds = appConfig.getConfig().grayboxUserGroups;
-                        const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
-                        if (vActData && vActData.code !== 200) {
-                            logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
-                            return vActData;
-                        }
+            if (batchStatusJson[promoteBatchName] === 'processed') {
+                // Set the Project & Batch Name in params for the Promote Content Worker Action to read and process
+                params.project = project;
+                params.batchName = promoteBatchName;
 
-                        return ow.actions.invoke({
-                            name: 'graybox/promote-worker',
-                            blocking: false,
-                            result: false,
-                            params
-                        }).then(async (result) => {
-                            logger.info(result);
-                            return {
-                                code: 200,
-                                payload: responsePayload
-                            };
-                        }).catch(async (err) => {
-                            responsePayload = 'Failed to invoke graybox promote action';
-                            logger.error(`${responsePayload}: ${err}`);
-                            return {
-                                code: 500,
-                                payload: responsePayload
-                            };
-                        });
-                    } catch (err) {
-                        responsePayload = 'Unknown error occurred while invoking Promote Content Worker Action';
+                try {
+                    return ow.actions.invoke({
+                        name: 'graybox/promote-worker',
+                        blocking: false,
+                        result: false,
+                        params
+                    }).then(async (result) => {
+                        logger.info(result);
+                        return {
+                            code: 200,
+                            payload: responsePayload
+                        };
+                    }).catch(async (err) => {
+                        responsePayload = 'Failed to invoke graybox promote action';
                         logger.error(`${responsePayload}: ${err}`);
-                        responsePayload = err;
-                    }
+                        return {
+                            code: 500,
+                            payload: responsePayload
+                        };
+                    });
+                } catch (err) {
+                    responsePayload = 'Unknown error occurred while invoking Promote Content Worker Action';
+                    logger.error(`${responsePayload}: ${err}`);
+                    responsePayload = err;
                 }
-                responsePayload = 'Triggered multiple Promote Content Worker Actions';
-                return {
-                    code: 200,
-                    payload: responsePayload,
-                };
-            });
-        });
+            }
+            responsePayload = 'Triggered Promote Content Worker Action';
+            return {
+                code: 200,
+                payload: responsePayload,
+            };
+        }
     } catch (err) {
         responsePayload = 'Unknown error occurred while processing the projects for Promote';
         logger.error(`${responsePayload}: ${err}`);

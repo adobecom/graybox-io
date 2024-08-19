@@ -37,11 +37,11 @@ const BATCH_REQUEST_PREVIEW = 200;
  *  - update the project excel file as and when necessary to update the status of the promote action
  */
 async function main(params) {
-    logger.info('Graybox Promote Worker invoked');
+    logger.info('Graybox Initiate Promote Worker invoked');
 
     const appConfig = new AppConfig(params);
     const {
-        spToken, adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath, draftsOnly
+        adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath, draftsOnly
     } = appConfig.getPayload();
 
     const filesWrapper = await initFilesWrapper(logger);
@@ -59,8 +59,7 @@ async function main(params) {
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
 
     // Create Batch Status JSON
-    const batchStatusJson = '{"batch_1":"initiated"}';
-    const batchStatusJsonObject = JSON.parse(batchStatusJson);
+    const batchStatusJson = {};
 
     // Create Project Preview Status JSON
     const previewStatusJson = [];
@@ -84,7 +83,7 @@ async function main(params) {
         const arrayChunk = gbFiles.slice(i, i + BATCH_REQUEST_PREVIEW);
         gbFilesBatchArray.push(arrayChunk);
         const batchName = `batch_${i + 1}`;
-        batchStatusJsonObject[`${batchName}`] = 'initiated';
+        batchStatusJson[`${batchName}`] = 'initiated';
 
         // Each Files Batch is written to a batch_n.json file
         writeBatchJsonPromises.push(filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batches/${batchName}.json`, arrayChunk));
@@ -100,7 +99,6 @@ async function main(params) {
     inputParams.gbRootFolder = gbRootFolder;
     inputParams.projectExcelPath = projectExcelPath;
     inputParams.experienceName = experienceName;
-    inputParams.spToken = spToken;
     inputParams.adminPageUri = adminPageUri;
     inputParams.draftsOnly = draftsOnly;
     inputParams.promoteIgnorePaths = promoteIgnorePaths;
@@ -108,28 +106,49 @@ async function main(params) {
     // convert the ignoreUserCheck boolean to string, so the string processing in the appConfig -> ignoreUserCheck works
     inputParams.ignoreUserCheck = `${appConfig.ignoreUserCheck()}`;
 
-    // Create Ongoing Projects JSON
-    const ongoingProjectsJson = `[{"project_path":"${gbRootFolder}/${experienceName}","status":"initiated"}]`;
+    // Create Project Queue Json
+    let projectQueue = [];
+    // Read the existing Project Queue Json & then merge the current project to it
+    if (await filesWrapper.fileExists('graybox_promote/project_queue.json')) {
+        projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
+        if (!projectQueue) {
+            projectQueue = [];
+        }
+    }
+
+    const newProject = { projectPath: `${gbRootFolder}/${experienceName}`, status: 'initiated', createdTime: Date.now() };
+
+    // TODO - check if replacing existing project is needed, if not remove this logic and just add the project to the queue
+    // Find the index of the same  experience Project exists, replace it with this one
+    const index = projectQueue.findIndex((obj) => obj.projectPath === `${gbRootFolder}/${experienceName}`);
+    if (index !== -1) {
+        // Replace the object at the found index
+        projectQueue[index] = newProject;
+    } else {
+        // Add the current project to the Project Queue Json & make it the current project
+        projectQueue.push(newProject);
+    }
+
+    logger.info(`In Initiate Preview Worker, Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
     // Create Project Status JSON
-    const projectStatusJson = `{"status":"initiated", "params": ${JSON.stringify(inputParams)}}`;
-    const projectStatusJsonObject = JSON.parse(projectStatusJson);
+    const projectStatusJson = { status: 'initiated', params: inputParams };
 
-    logger.info(`projectStatusJson: ${projectStatusJson}`);
+    logger.info(`In Initiate Preview Worker, projectStatusJson: ${JSON.stringify(projectStatusJson)}`);
 
-    // write to JSONs to AIO Files for Ongoing Projects and Project Status
-    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', ongoingProjectsJson);
-    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJsonObject);
+    // write to JSONs to AIO Files for Projects Queue and Project Status
+    await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/gbfile_batches.json`, gbFileBatchesJson);
-    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJsonObject);
+    await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`, previewStatusJson);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`, projectPreviewErrorsJson);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/promoted_paths.json`, promotedPathsJson);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/promote_errors.json`, promoteErrorsJson);
 
     // read Graybox Project Json from AIO Files
-    const json = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
-    logger.info(`Ongoing Projects Json: ${JSON.stringify(json)}`);
+    const projectQueueJson = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
+    logger.info(`Project Queue Json: ${JSON.stringify(projectQueueJson)}`);
     const statusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
     logger.info(`Project Status Json: ${JSON.stringify(statusJson)}`);
     const projectBatchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`);

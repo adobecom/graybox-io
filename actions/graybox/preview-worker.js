@@ -43,80 +43,82 @@ async function main(params) {
     // Read the Project Status in the current project's "status.json" file
     const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
 
-    if (helixUtils.canBulkPreview(true) && (projectStatusJson.status === 'initiated' || projectStatusJson.status === 'promoted')) {
+    if (helixUtils.canBulkPreview(true)) {
         logger.info('In Preview Worker, Bulk Previewing Graybox files');
+        if ((projectStatusJson.status === 'initiated' || projectStatusJson.status === 'promoted')) {
+            const batchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`);
 
-        const batchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`);
+            logger.info(`In Preview-Worker, batchStatusJson: ${JSON.stringify(batchStatusJson)}`);
 
-        logger.info(`In Preview-Worker, batchStatusJson: ${JSON.stringify(batchStatusJson)}`);
-
-        const noofbatches = batchStatusJson !== undefined ? Object.keys(batchStatusJson).length : 0;
-        // iterate over batch_status.json file and process each batch
-        if (projectStatusJson.status === 'initiated') {
-            const batchResults = {};
-            // Read the Batch JSON file into an array
-            const i = 0; // Start with counter as 0
-            await iterateAndPreviewBatchJson(i, batchResults, noofbatches, batchStatusJson, true);
-        } else if (projectStatusJson.status === 'promoted') {
-            const promotedPathsJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/promoted_paths.json`);
-            const i = 0; // Start with counter as 0
-            await iterateAndPreviewBatchJson(i, promotedPathsJson, noofbatches, batchStatusJson, false);
-        }
-
-        // Write the updated batch_status.json file
-        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
-        logger.info(`Updated Batch Status Json: ${JSON.stringify(batchStatusJson)}`);
-
-        // PreviewStatuses is an object with keys(batchNames) mapping to arrays(previewStauses)
-        const failedPreviews = Object.keys(previewStatuses).reduce((acc, key) => {
-            const filteredStatuses = previewStatuses[key]
-                .filter((status) => !status.success) // Filter out failed statuses
-                .map((status) => status.path); // Map to get the path of the failed status
-            return acc.concat(filteredStatuses); // Concatenate to the accumulator
-        }, []);
-        // Now failedPreviews contains all the paths from the filtered and mapped arrays
-
-        const previewStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`);
-        const previewErrorsJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`);
-
-        // Combine the Preview Statuses for each batch read from AIO Json with the Preview Statuses
-        if (previewStatusJson) {
-            Object.entries(previewStatusJson).forEach(([batchName, batchPreviewStatuses]) => {
-                if (previewStatuses[batchName]) {
-                    previewStatuses[batchName] = previewStatuses[batchName].concat(batchPreviewStatuses);
-                } else {
-                    previewStatuses[batchName] = batchPreviewStatuses;
-                }
-            });
-        }
-
-        // Write the updated preview_errors.json file
-        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`, previewStatuses);
-
-        // Write the updated preview_errors.json file
-        await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`, previewErrorsJson.concat(failedPreviews));
-
-        // Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
-        await updateProjectStatus(gbRootFolder, experienceName, filesWrapper);
-
-        try {
-            logger.info('Updating project excel file with status');
-            const sFailedPreviews = failedPreviews.length > 0 ? `Failed Previews(Promote won't happen for these): \n${failedPreviews.join('\n')}` : '';
-            let excelValues = '';
+            const noofbatches = batchStatusJson !== undefined ? Object.keys(batchStatusJson).length : 0;
+            // iterate over batch_status.json file and process each batch
             if (projectStatusJson.status === 'initiated') {
-                excelValues = [['Step 1 of 5: Initial Preview of Graybox completed', toUTCStr(new Date()), sFailedPreviews]];
+                const batchResults = {};
+                // Read the Batch JSON file into an array
+                const i = 0; // Start with counter as 0
+                await iterateAndPreviewBatchJson(i, batchResults, noofbatches, batchStatusJson, true);
             } else if (projectStatusJson.status === 'promoted') {
-                excelValues = [['Step 5 of 5: Final Preview of Graybox completed', toUTCStr(new Date()), sFailedPreviews]];
+                const promotedPathsJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/promoted_paths.json`);
+                const i = 0; // Start with counter as 0
+                await iterateAndPreviewBatchJson(i, promotedPathsJson, noofbatches, batchStatusJson, false);
             }
-            // Update Preview Status
-            await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
-        } catch (err) {
-            logger.error(`Error Occured while updating Excel during Graybox Initial Preview: ${err}`);
+
+            // Write the updated batch_status.json file
+            await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/batch_status.json`, batchStatusJson);
+            logger.info(`Updated Batch Status Json: ${JSON.stringify(batchStatusJson)}`);
+
+            // PreviewStatuses is an object with keys(batchNames) mapping to arrays(previewStauses)
+            const failedPreviews = Object.keys(previewStatuses).reduce((acc, key) => {
+                const filteredStatuses = previewStatuses[key]
+                    .filter((status) => !status.success) // Filter out failed statuses
+                    .map((status) => status.path); // Map to get the path of the failed status
+                return acc.concat(filteredStatuses); // Concatenate to the accumulator
+            }, []);
+            // Now failedPreviews contains all the paths from the filtered and mapped arrays
+
+            const previewStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`);
+            const previewErrorsJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`);
+
+            // Combine the Preview Statuses for each batch read from AIO Json with the Preview Statuses
+            if (previewStatusJson) {
+                Object.entries(previewStatusJson).forEach(([batchName, batchPreviewStatuses]) => {
+                    if (previewStatuses[batchName]) {
+                        previewStatuses[batchName] = previewStatuses[batchName].concat(batchPreviewStatuses);
+                    } else {
+                        previewStatuses[batchName] = batchPreviewStatuses;
+                    }
+                });
+            }
+
+            // Write the updated preview_errors.json file
+            await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`, previewStatuses);
+
+            // Write the updated preview_errors.json file
+            await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/preview_errors.json`, previewErrorsJson.concat(failedPreviews));
+
+            // Update the Project Status in the current project's "status.json" file & the parent "project_queue.json" file
+            await updateProjectStatus(gbRootFolder, experienceName, filesWrapper);
+
+            try {
+                logger.info('Updating project excel file with status');
+                const sFailedPreviews = failedPreviews.length > 0 ? `Failed Previews(Promote won't happen for these): \n${failedPreviews.join('\n')}` : '';
+                let excelValues = '';
+                if (projectStatusJson.status === 'initiated') {
+                    excelValues = [['Step 1 of 5: Initial Preview of Graybox completed', toUTCStr(new Date()), sFailedPreviews]];
+                } else if (projectStatusJson.status === 'promoted') {
+                    excelValues = [['Step 5 of 5: Final Preview of Default Promoted Content completed', toUTCStr(new Date()), sFailedPreviews]];
+                }
+                // Update Preview Status
+                await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
+            } catch (err) {
+                logger.error(`Error Occured while updating Excel during Graybox Initial Preview: ${err}`);
+            }
         }
 
         responsePayload = 'Graybox Preview Worker action completed.';
     } else {
         responsePayload = 'Bulk Preview not enabled for Graybox Content Tree';
+        logger.error(responsePayload);
     }
     logger.info(responsePayload);
     return exitAction({
@@ -163,32 +165,34 @@ async function main(params) {
     async function previewBatch(batchName, batchResults, batchStatusJson, isGraybox = true) {
         const batchJson = batchResults[batchName];
         const paths = [];
-        batchJson.forEach((gbFile) => paths.push(handleExtension(gbFile)));
+        if (batchJson) {
+            batchJson.forEach((gbFile) => paths.push(handleExtension(gbFile)));
 
-        // Perform Bulk Preview of a Batch of Graybox files
-        if (isGraybox) {
-            previewStatuses[batchName] = await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW, experienceName, isGraybox);
-        } else {
-            // Don't pass experienceName for final preview
-            previewStatuses[batchName] = await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW);
-        }
-        if (isGraybox) {
-            batchStatusJson[batchName] = 'initial_preview_done';
-        } else {
-            batchStatusJson[batchName] = 'final_preview_done';
+            // Perform Bulk Preview of a Batch of Graybox files
+            if (isGraybox) {
+                previewStatuses[batchName] = await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW, experienceName, isGraybox);
+            } else {
+                // Don't pass experienceName for final preview
+                previewStatuses[batchName] = await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW);
+            }
+            if (isGraybox) {
+                batchStatusJson[batchName] = 'initial_preview_done';
+            } else {
+                batchStatusJson[batchName] = 'final_preview_done';
+            }
         }
     }
 }
 
 /**
- * Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
+ * Update the Project Status in the current project's "status.json" file & the parent "project_queue.json" file
  * @param {*} gbRootFolder graybox root folder
  * @param {*} experienceName graybox experience name
  * @param {*} filesWrapper filesWrapper object
  * @returns updated project status
  */
 async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper) {
-    const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
+    const projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
     const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/status.json`);
 
     // Update the Project Status in the current project's "status.json" file
@@ -198,10 +202,15 @@ async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper) {
     logger.info(`In Preview-sched After Processing Preview, Project Status Json: ${JSON.stringify(projectStatusJson)}`);
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
 
-    // Update the Project Status in the parent "ongoing_projects.json" file
-    projects.find((p) => p.project_path === `${gbRootFolder}/${experienceName}`).status = toBeStatus;
-    logger.info(`In Preview-sched After Processing Preview, OnProjects Json: ${JSON.stringify(projects)}`);
-    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', projects);
+    // Update the Project Status in the parent "project_queue.json" file
+    const index = projectQueue.findIndex((obj) => obj.projectPath === `${gbRootFolder}/${experienceName}`);
+    if (index !== -1) {
+        // Replace the object at the found index
+        projectQueue[index].status = toBeStatus;
+    }
+
+    logger.info(`In Preview-sched After Processing Preview, Project Queue Json: ${JSON.stringify(projectQueue)}`);
+    await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
 }
 
 function exitAction(resp) {

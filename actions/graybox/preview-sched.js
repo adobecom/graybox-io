@@ -18,8 +18,6 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 const openwhisk = require('openwhisk');
 const { getAioLogger } = require('../utils');
-const { validateAction } = require('./validateAction');
-const AppConfig = require('../appConfig');
 const initFilesWrapper = require('./filesWrapper');
 
 async function main(params) {
@@ -31,20 +29,19 @@ async function main(params) {
     const filesWrapper = await initFilesWrapper(logger);
 
     try {
-        const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
-        logger.info(`From Preview-sched Ongoing Projects Json: ${JSON.stringify(projects)}`);
+        const projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
+        logger.info(`From Preview-sched Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
         // iterate the JSON array projects and extract the project_path where status is 'initiated'
-        const ongoingInitiatedProjects = [];
-        projects.forEach((project) => {
+        const ongoingInitiatedProjectPaths = [];
+        projectQueue.forEach((project) => {
             if (project.status === 'initiated' || project.status === 'promoted') {
-                ongoingInitiatedProjects.push(project.project_path);
+                ongoingInitiatedProjectPaths.push(project.projectPath);
             }
         });
 
-        ongoingInitiatedProjects.forEach(async (project) => {
+        ongoingInitiatedProjectPaths.forEach(async (project) => {
             const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
-            logger.info(`In Preview-sched Projects Json: ${JSON.stringify(projectStatusJson)}`);
 
             // copy all params from json into the params object
             const inputParams = projectStatusJson?.params;
@@ -53,14 +50,6 @@ async function main(params) {
             });
 
             try {
-                const appConfig = new AppConfig(params);
-                const grpIds = appConfig.getConfig().grayboxUserGroups;
-                const vActData = await validateAction(params, grpIds, params.ignoreUserCheck);
-                if (vActData && vActData.code !== 200) {
-                    logger.info(`Validation failed: ${JSON.stringify(vActData)}`);
-                    return vActData;
-                }
-
                 return ow.actions.invoke({
                     name: 'graybox/preview-worker',
                     blocking: false,

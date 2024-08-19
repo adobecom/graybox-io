@@ -134,18 +134,24 @@ async function processFiles({
                             // Create Promote Batches
                             // const promoteBatchName = `batch_${promoteBatchCount + 1}`;
                             // Don't create new batch names, use the same batch names created in the start before initial preview
-                            const promoteBatchJson = promoteBatchesJson[batchName];
+
+                            let promoteBatchJson = promoteBatchesJson[batchName];
                             if (!promoteBatchJson) {
-                                promoteBatchesJson[batchName] = [];
+                                promoteBatchJson = { status: 'processed', files: [destinationFilePath] };
+                            } else if (promoteBatchJson.files) {
+                                promoteBatchJson.files.push(destinationFilePath);
+                            } else {
+                                promoteBatchJson.files = [destinationFilePath];
                             }
-                            promoteBatchesJson[batchName].push(destinationFilePath);
+                            promoteBatchesJson[batchName] = promoteBatchJson;
 
                             logger.info(`In Process-doc-worker Promote Batch JSON after push: ${JSON.stringify(promoteBatchesJson)}`);
 
                             // If the promote batch count reaches the limit, increment the promote batch count
-                            if (promoteBatchCount === BATCH_REQUEST_PROMOTE) {
+                            if (promoteBatchCount === BATCH_REQUEST_PROMOTE) { // TODO remove this code if promoteBatchCount is not needed, and instead initial preview batch count is used
                                 promoteBatchCount += 1;
                             }
+
                             // Write the promote batches JSON file
                             await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/promote_batches.json`, promoteBatchesJson);
                         } else {
@@ -169,13 +175,15 @@ async function processFiles({
                         // Don't create new batch names, use the same batch names created in the start before initial preview
                         let copyBatchJson = copyBatchesJson[batchName];
                         if (!copyBatchJson) {
-                            copyBatchJson = {};
+                            copyBatchJson = { status: 'processed', files: [{ copySourceFilePath, copyDestFilePath }] };
+                        } else if (!copyBatchJson.files) {
+                            copyBatchJson.files = [];
                         }
-                        copyBatchJson[copySourceFilePath] = copyDestFilePath;
+                        copyBatchJson.files.push({ copySourceFilePath, copyDestFilePath });
                         copyBatchesJson[batchName] = copyBatchJson;
 
                         // If the copy batch count reaches the limit, increment the copy batch count
-                        if (copyBatchCount === BATCH_REQUEST_PROMOTE) {
+                        if (copyBatchCount === BATCH_REQUEST_PROMOTE) { // TODO remove this code if copyBatchCount is not needed, and instead initial preview batch count is used
                             copyBatchCount += 1; // Increment the copy batch count
                         }
                         logger.info(`In Process-doc-worker Copy Batch JSON after push: ${JSON.stringify(copyBatchesJson)}`);
@@ -214,21 +222,25 @@ async function processFiles({
 }
 
 /**
- * Update the Project Status in the current project's "status.json" file & the parent "ongoing_projects.json" file
+ * Update the Project Status in the current project's "status.json" file & the parent "project_queue.json" file
  * @param {*} gbRootFolder graybox root folder
  * @param {*} experienceName graybox experience name
  * @param {*} filesWrapper filesWrapper object
  * @returns updated project status
  */
 async function updateProjectStatus(batchStatusJson, projectStatusJson, gbRootFolder, experienceName, filesWrapper) {
-    const projects = await filesWrapper.readFileIntoObject('graybox_promote/ongoing_projects.json');
+    const projectQueue = await filesWrapper.readFileIntoObject('graybox_promote/project_queue.json');
     // Write the Project Status in the current project's "status.json" file
     await filesWrapper.writeFile(`graybox_promote${gbRootFolder}/${experienceName}/status.json`, projectStatusJson);
 
-    // Update the Project Status in the parent "ongoing_projects.json" file
-    projects.find((p) => p.project_path === `${gbRootFolder}/${experienceName}`).status = 'processed';
-    logger.info(`In Process-docx-worker After Processing Docx, OnProjects Json: ${JSON.stringify(projects)}`);
-    await filesWrapper.writeFile('graybox_promote/ongoing_projects.json', projects);
+    // Update the Project Status in the parent "project_queue.json" file
+    const index = projectQueue.findIndex((obj) => obj.projectPath === `${gbRootFolder}/${experienceName}`);
+    if (index !== -1) {
+        // Replace the object at the found index
+        projectQueue[index].status = 'processed';
+    }
+    logger.info(`In Process-docx-worker After Processing Docx, Project Queue Json: ${JSON.stringify(projectQueue)}`);
+    await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
 }
 
 function exitAction(resp) {
