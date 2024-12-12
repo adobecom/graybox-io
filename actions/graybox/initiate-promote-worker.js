@@ -187,7 +187,7 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
     return findAllGrayboxFiles({
         baseURI: sp.api.file.get.gbBaseURI,
         options,
-        gbFolders: appConfig.isDraftOnly() ? [`/${experienceName}/drafts`] : [''],
+        gbFolders: appConfig.isDraftOnly() ? [`/${experienceName}/drafts`] : [`/${experienceName}`],
         promoteIgnoreList,
         downloadBaseURI: sp.api.file.download.baseURI,
         experienceName,
