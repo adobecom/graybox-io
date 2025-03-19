@@ -86,7 +86,7 @@ class HelixUtils {
             let experienceName = grayboxExperienceName || '';
             experienceName = isGraybox ? `${experienceName}/` : '';
 
-            const bulkUrl = `https://admin.hlx.page/${operation}/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${experienceName}*`;
+            const bulkUrl = `https://admin.aem.page/${operation}/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${experienceName}*`;
             const options = {
                 method: 'POST',
                 body: JSON.stringify({ forceUpdate: true, paths }),
@@ -116,7 +116,7 @@ class HelixUtils {
                             e.fileName = jobStatus[e.path]?.fileName;
                             e.resourcePath = jobStatus[e.path]?.resourcePath;
 
-                            e.mdPath = `https://${urlInfo.getBranch()}--${this.getRepo(isGraybox)}--${urlInfo.getOwner()}.hlx.page${e.resourcePath}`;
+                            e.mdPath = `https://${urlInfo.getBranch()}--${this.getRepo(isGraybox)}--${urlInfo.getOwner()}.aem.page${e.resourcePath}`;
                         }
                         e.responseCode = jobStatus[e.path]?.responseCode;
                     });
@@ -150,7 +150,7 @@ class HelixUtils {
             }
             const bulkOperation = operation === LIVE ? PUBLISH : operation;
             const urlInfo = this.appConfig.getUrlInfo();
-            const statusUrl = `https://admin.hlx.page/job/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${bulkOperation}/${jobName}/details`;
+            const statusUrl = `https://admin.aem.page/job/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${bulkOperation}/${jobName}/details`;
             const response = await fetch(statusUrl, options);
             if (!response.ok && retryAttempt <= this.appConfig.getConfig().maxBulkPreviewChecks) {
                 await delay(this.appConfig.getConfig().bulkPreviewCheckInterval * 1000);
