@@ -150,7 +150,7 @@ class HelixUtils {
             }
             const bulkOperation = operation === LIVE ? PUBLISH : operation;
             const urlInfo = this.appConfig.getUrlInfo();
-            const statusUrl = `https://admin.aem.page/job/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${bulkOperation}/${jobName}/details`;
+            const statusUrl = `https://admin.hlx.page/job/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${bulkOperation}/${jobName}/details`;
             const response = await fetch(statusUrl, options);
             if (!response.ok && retryAttempt <= this.appConfig.getConfig().maxBulkPreviewChecks) {
                 await delay(this.appConfig.getConfig().bulkPreviewCheckInterval * 1000);
