@@ -86,7 +86,7 @@ class HelixUtils {
             let experienceName = grayboxExperienceName || '';
             experienceName = isGraybox ? `${experienceName}/` : '';
 
-            const bulkUrl = `https://admin.aem.page/${operation}/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${experienceName}*`;
+            const bulkUrl = `https://admin.hlx.page/${operation}/${urlInfo.getOwner()}/${repo}/${urlInfo.getBranch()}/${experienceName}*`;
             const options = {
                 method: 'POST',
                 body: JSON.stringify({ forceUpdate: true, paths }),
