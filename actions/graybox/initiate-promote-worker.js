@@ -170,8 +170,7 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, Project Batch Status Json: ${JSON.stringify(projectBatchStatusJson)}`);
 
     // process data in batches
-    let responsePayload;
-    responsePayload = 'Graybox Initiate Promote Worker action completed.';
+    const responsePayload = 'Graybox Initiate Promote Worker action completed.';
     logger.info(responsePayload);
     return {
         body: responsePayload,
@@ -192,7 +191,6 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
         options,
         gbFolders: appConfig.isDraftOnly() ? [`/${experienceName}/drafts`] : [''],
         promoteIgnoreList,
-        downloadBaseURI: sp.api.file.download.baseURI,
         experienceName,
         sharepoint
     });
@@ -202,14 +200,13 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
  * Iteratively finds all files under a specified root folder.
  */
 async function findAllGrayboxFiles({
-    baseURI, options, gbFolders, promoteIgnoreList, downloadBaseURI, experienceName, sharepoint
+    baseURI, options, gbFolders, promoteIgnoreList, experienceName, sharepoint
 }) {
     const gbRoot = baseURI.split(':').pop();
     // Regular expression to select the gbRoot and anything before it
     // Eg: the regex selects "https://<sharepoint-site>:/<app>-graybox"
     const pPathRegExp = new RegExp(`.*:${gbRoot}`);
-    // Regular expression to select paths that has the experienceName at first or second level
-    const pathsToSelectRegExp = new RegExp(`^/([^/]+/)?${experienceName}(/.*)?$`);
+    const pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
     const gbFiles = [];
     while (gbFolders.length !== 0) {
         const uri = `${baseURI}${gbFolders.shift()}:/children?$top=${MAX_CHILDREN}`;
