@@ -46,10 +46,11 @@ async function main(params) {
 
     const filesWrapper = await initFilesWrapper(logger);
     const sharepoint = new Sharepoint(appConfig);
+    const project = `${gbRootFolder}/${experienceName}`;
 
     try {
         // Update Promote Status
-        const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '']];
+        const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '', 'Sample Value']];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteTriggeredExcelValues);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Initiate Promote: ${err}`);
@@ -61,6 +62,12 @@ async function main(params) {
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
+    logger.info(`GB FILES in initiate-promote-worker ::: ${JSON.stringify(gbFiles)}`);
+    const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
+    await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
+
+    // Write all the files to a master list file
+    await filesWrapper.writeFile(`graybox_promote${project}/master_list.json`, gbFiles);
 
     // Create Batch Status JSON
     const batchStatusJson = {};
@@ -86,7 +93,7 @@ async function main(params) {
     // Promote Batches JSON
     const promoteBatchesJson = {};
 
-    const project = `${gbRootFolder}/${experienceName}`;
+    // const project = `${gbRootFolder}/${experienceName}`;
 
     // create batches to process the data
     const gbFilesBatchArray = [];
@@ -135,9 +142,11 @@ async function main(params) {
     // Find the index of the same  experience Project exists, replace it with this one
     const index = projectQueue.findIndex((obj) => obj.projectPath === `${project}`);
     if (index !== -1) {
+        logger.info(`In Initiate Promote Worker, replacing existing project in Project Queue: ${project}`);
         // Replace the object at the found index
         projectQueue[index] = newProject;
     } else {
+        logger.info(`In Initiate Promote Worker, adding new project to Project Queue: ${project}`);
         // Add the current project to the Project Queue Json & make it the current project
         projectQueue.push(newProject);
     }
@@ -150,15 +159,25 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, projectStatusJson: ${JSON.stringify(projectStatusJson)}`);
 
     // write to JSONs to AIO Files for Projects Queue and Project Status
+    // Sample projectQueue: [{ projectPath: "path/to/project", status: "initiated", createdTime: 1234567890 }]
     await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
+    // Sample projectStatusJson: { status: 'initiated', params: inputParams }
     await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJson);
+    // Sample gbFileBatchesJson: { "batch1": ["path/to/file1.docx", "path/to/file2.docx"], "batch2": ["path/to/file3.docx"] }
     await filesWrapper.writeFile(`graybox_promote${project}/gbfile_batches.json`, gbFileBatchesJson);
+    // Sample batchStatusJson: { "batch1": "initiated", "batch2": "initiated" }
     await filesWrapper.writeFile(`graybox_promote${project}/batch_status.json`, batchStatusJson);
+    // Sample previewStatusJson: []
     await filesWrapper.writeFile(`graybox_promote${project}/preview_status.json`, previewStatusJson);
+    // Sample projectPreviewErrorsJson: []
     await filesWrapper.writeFile(`graybox_promote${project}/preview_errors.json`, projectPreviewErrorsJson);
+    // Sample promotedPathsJson: {}
     await filesWrapper.writeFile(`graybox_promote${project}/promoted_paths.json`, promotedPathsJson);
+    // Sample promoteErrorsJson: []
     await filesWrapper.writeFile(`graybox_promote${project}/promote_errors.json`, promoteErrorsJson);
+    // Sample promoteBatchesJson: {}
     await filesWrapper.writeFile(`graybox_promote${project}/promote_batches.json`, promoteBatchesJson);
+    // Sample copyBatchesJson: {}
     await filesWrapper.writeFile(`graybox_promote${project}/copy_batches.json`, copyBatchesJson);
 
     // read Graybox Project Json from AIO Files
@@ -208,6 +227,12 @@ async function findAllGrayboxFiles({
     const pPathRegExp = new RegExp(`.*:${gbRoot}`);
     const pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
     const gbFiles = [];
+    console.log('baseURI : ', baseURI);
+    
+    // Initialize with sabya folder instead of the folders passed in
+    gbFolders = ['/sabya']; // TODO: remove this line after testing
+    logger.info(`gbFolders to start with : ${gbFolders}`);
+    
     while (gbFolders.length !== 0) {
         const uri = `${baseURI}${gbFolders.shift()}:/children?$top=${MAX_CHILDREN}`;
         // eslint-disable-next-line no-await-in-loop

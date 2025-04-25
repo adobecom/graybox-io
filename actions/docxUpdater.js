@@ -15,9 +15,10 @@
 * from Adobe.
 ************************************************************************* */
 const parseMarkdown = require('milo-parse-markdown').default;
+const util = require('util');
+const xlsx = require('xlsx');
 const { mdast2docx } = require('../node_modules/milo-md2docx/lib/index');
 const { getAioLogger } = require('./utils');
-
 const DEFAULT_STYLES = require('../defaultstyles.xml');
 
 const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
@@ -34,7 +35,7 @@ let firstGtRows = [];
  * @param {object} options - The options for fetching the Markdown file.
  * @returns {Promise} - A promise that resolves to the generated Docx file.
  */
-async function updateDocument(content, expName, hlxAdminApiKey) {
+export async function updateDocument(content, expName, hlxAdminApiKey) {
     firstGtRows = [];
     let docx;
 
@@ -43,8 +44,12 @@ async function updateDocument(content, expName, hlxAdminApiKey) {
     const { mdast } = state.content;
     const mdastChildren = mdast.children;
 
+    logger.info(`In updateDocument, before links are updated: ${util.inspect(mdast, { depth: null, maxArrayLength: null, colors: false })}`);
+
     // Transform Graybox Links
     updateExperienceNameFromLinks(mdastChildren, expName);
+
+    logger.info(`In updateDocument, after links are updated: ${util.inspect(mdast, { depth: null, maxArrayLength: null, colors: false })}`);
 
     // Remove Graybox Styles
     iterateGtRowsToReplaceStyles();
@@ -64,6 +69,80 @@ async function updateDocument(content, expName, hlxAdminApiKey) {
     return docx;
 }
 
+export async function updateExcel(content, expName, hlxAdminApiKey) {
+    try {
+        logger.info(`In updateExcel, content: ${util.inspect(content, { depth: null, maxArrayLength: null, colors: false })}`);
+        logger.info(`In updateExcel, expName: ${expName}`);
+        // Parse the content as JSON
+        const jsonContent = typeof content === 'string' ? JSON.parse(content) : content;
+        // Process all columns that might contain URLs
+        if (jsonContent && jsonContent.columns) {
+            for (let i = 0; i < jsonContent.columns.length; i++) {
+                const column = jsonContent.columns[i];
+                if (typeof column === 'string' && (column.includes(expName) || column.includes(gbDomainSuffix))) {
+                    jsonContent.columns[i] = column.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                    logger.info(`In updateExcel, column after replacement: ${jsonContent.columns[i]}`);
+                }
+            }
+        }
+        // Process all data rows that might contain URLs
+        if (jsonContent && jsonContent.data && Array.isArray(jsonContent.data)) {
+            jsonContent.data.forEach(row => {
+                if (Array.isArray(row)) {
+                    for (let i = 0; i < row.length; i++) {
+                        const cell = row[i];
+                        if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
+                            row[i] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                            logger.info(`In updateExcel, cell after replacement: ${row[i]}`);
+                        }
+                    }
+                }
+            });
+        }
+        return JSON.stringify(jsonContent);
+    } catch (err) {
+        logger.error(`Error while updating Excel content: ${err}`);
+        return content; // Return original content if there's an error
+    }
+}
+
+/**
+ * Convert JSON content to Excel format.
+ * @param {Object} jsonContent - The JSON content to convert.
+ * @returns {Buffer} - The converted Excel content.
+ */
+export function convertJsonToExcel(jsonContent) {
+    try {
+        // Parse JSON string if it's a string
+        const parsedContent = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
+        // Create a workbook
+        const workbook = xlsx.utils.book_new();
+        // Convert JSON data to worksheet format
+        // If the data has columns and data properties, use them to create a worksheet
+        let worksheet;
+        if (parsedContent.columns && parsedContent.data) {
+            // Create worksheet from columns and data arrays
+            worksheet = xlsx.utils.aoa_to_sheet([parsedContent.columns, ...parsedContent.data]);
+        } else {
+            // If the data is an array of objects, convert it directly
+            const dataArray = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
+            worksheet = xlsx.utils.json_to_sheet(dataArray);
+        }
+        // Add the worksheet to the workbook
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        // Write to buffer
+        const excelBuffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        return excelBuffer;
+    } catch (error) {
+        logger.error(`Error in convertJsonToExcel: ${error}`);
+        // Create a simple empty workbook as fallback
+        const workbook = xlsx.utils.book_new();
+        const worksheet = xlsx.utils.aoa_to_sheet([['Error converting JSON to Excel']]);
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        return xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    }
+}
+
 /**
  * Replace all relative link references in the given mdast with the provided experience name and graybox style pattern.
  * @param {Array} mdast - The mdast to be updated.
@@ -71,15 +150,37 @@ async function updateDocument(content, expName, hlxAdminApiKey) {
  * @param {RegExp} grayboxStylePattern - The pattern to match graybox styles.
  */
 const updateExperienceNameFromLinks = (mdast, expName) => {
+    logger.info(`In updateExperienceNameFromLinks, mdast: ${mdast}`);
+    logger.info(`In updateExperienceNameFromLinks, expName: ${expName}`); // sabya-gb-1
     if (mdast) {
         mdast.forEach((child) => {
             if (child.type === 'gridTable') {
                 firstGtRows.push(findFirstGtRowInNode(child));
             }
             // remove experience name from links on the document
+            logger.info(`In updateExperienceNameFromLinks, child: ${child}`);
+            logger.info(`In updateExperienceNameFromLinks, child.type: ${child.type}`);
+            logger.info(`In updateExperienceNameFromLinks, child.url: ${child.url}`); // https://main--bacom-graybox--adobecom.aem.page/fragments/sabya/gb-frag
+            logger.info(`In updateExperienceNameFromLinks, child.children: ${child.children}`);
+            logger.info(`In updateExperienceNameFromLinks, gbDomainSuffix: ${gbDomainSuffix}`); // -graybox
+            
+            // Process link URLs
             if (child.type === 'link' && child.url && (child.url.includes(expName) || child.url.includes(gbDomainSuffix))) {
                 child.url = child.url.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                logger.info(`In updateExperienceNameFromLinks, child.url after replacement: ${child.url}`);
             }
+            
+            // Process link text content that contains graybox URLs
+            if (child.type === 'link' && child.children) {
+                child.children.forEach((textNode) => {
+                    if (textNode.type === 'text' && textNode.value &&
+                        (textNode.value.includes(gbDomainSuffix) || textNode.value.includes(expName))) {
+                        textNode.value = textNode.value.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                        logger.info(`In updateExperienceNameFromLinks, textNode.value after replacement: ${textNode.value}`);
+                    }
+                });
+            }
+            
             if (child.children) {
                 updateExperienceNameFromLinks(child.children, expName);
             }
@@ -201,4 +302,3 @@ async function generateDocxFromMdast(mdast, hlxAdminApiKey) {
     return docx;
 }
 
-module.exports = updateDocument;
