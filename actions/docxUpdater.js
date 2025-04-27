@@ -117,19 +117,52 @@ export function convertJsonToExcel(jsonContent) {
         const parsedContent = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
         // Create a workbook
         const workbook = xlsx.utils.book_new();
-        // Convert JSON data to worksheet format
-        // If the data has columns and data properties, use them to create a worksheet
-        let worksheet;
-        if (parsedContent.columns && parsedContent.data) {
-            // Create worksheet from columns and data arrays
-            worksheet = xlsx.utils.aoa_to_sheet([parsedContent.columns, ...parsedContent.data]);
+        // Handle multi-sheet format
+        if (parsedContent[':type'] === 'multi-sheet' && parsedContent[':names'] && Array.isArray(parsedContent[':names'])) {
+            // Process each sheet defined in :names array
+            parsedContent[':names'].forEach((sheetName) => {
+                if (parsedContent[sheetName]) {
+                    const sheetData = parsedContent[sheetName];
+                    let worksheet;
+                    if (sheetData.columns && (sheetData.data || Array.isArray(sheetData.data))) {
+                        // Create worksheet from columns and data arrays
+                        const rows = [sheetData.columns];
+                        if (Array.isArray(sheetData.data)) {
+                            // If data is an array of objects, convert each object to an array in the same order as columns
+                            if (sheetData.data.length > 0 && typeof sheetData.data[0] === 'object' && !Array.isArray(sheetData.data[0])) {
+                                sheetData.data.forEach((dataObj) => {
+                                    const row = sheetData.columns.map((col) => dataObj[col] || '');
+                                    rows.push(row);
+                                });
+                            } else {
+                                // If data is already an array of arrays, just add them
+                                rows.push(...sheetData.data);
+                            }
+                        }
+                        worksheet = xlsx.utils.aoa_to_sheet(rows);
+                    } else {
+                        // Fallback if structure is different
+                        const dataArray = Array.isArray(sheetData) ? sheetData : [sheetData];
+                        worksheet = xlsx.utils.json_to_sheet(dataArray);
+                    }
+                    // Add the worksheet to the workbook with the sheet name
+                    xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+                }
+            });
         } else {
-            // If the data is an array of objects, convert it directly
-            const dataArray = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
-            worksheet = xlsx.utils.json_to_sheet(dataArray);
+            // Handle single sheet format (original implementation)
+            let worksheet;
+            if (parsedContent.columns && parsedContent.data) {
+                // Create worksheet from columns and data arrays
+                worksheet = xlsx.utils.aoa_to_sheet([parsedContent.columns, ...parsedContent.data]);
+            } else {
+                // If the data is an array of objects, convert it directly
+                const dataArray = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
+                worksheet = xlsx.utils.json_to_sheet(dataArray);
+            }
+            // Add the worksheet to the workbook
+            xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
         }
-        // Add the worksheet to the workbook
-        xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
         // Write to buffer
         const excelBuffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         return excelBuffer;
