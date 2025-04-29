@@ -17,16 +17,16 @@
 
 const fetch = require('node-fetch');
 const { Readable } = require('stream');
-const util = require('util');
-const xlsx = require('xlsx');
 const {
     getAioLogger, toUTCStr
 } = require('../utils');
 const AppConfig = require('../appConfig');
 const HelixUtils = require('../helixUtils');
 const Sharepoint = require('../sharepoint');
-const { updateDocument, updateExcel, convertJsonToExcel } = require('../docxUpdater');
+const { updateDocument } = require('../docxUpdater');
+const { updateExcel, convertJsonToExcel } = require('../excelHandler');
 const initFilesWrapper = require('./filesWrapper');
+
 const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
 const gbDomainSuffix = '-graybox';
 
@@ -48,7 +48,6 @@ async function main(params) {
 
     // Get the Helix Admin API Key for the Graybox content tree, needed for accessing (with auth) Images in graybox tree
     const helixAdminApiKey = helixUtils.getAdminApiKey(true);
-    logger.info(`In Process-doc-worker, gbRootFolder: ${gbRootFolder}, experienceName: ${experienceName}, projectExcelPath: ${projectExcelPath}`);
 
     const previewStatuses = await filesWrapper.readFileIntoObject(`graybox_promote${gbRootFolder}/${experienceName}/preview_status.json`);
 
@@ -135,26 +134,14 @@ async function processFiles({
                     const isDocxFile = status.fileName.toLowerCase().endsWith('.docx');
                     // Check if the file is an Excel file
                     const isExcelFile = status.fileName.toLowerCase().endsWith('.xlsx') ||
-                                      status.fileName.toLowerCase().endsWith('.xls');
-                    
+                        status.fileName.toLowerCase().endsWith('.xls');
+
                     if (isDocxFile) {
                         // eslint-disable-next-line no-await-in-loop
                         const response = await sharepoint.fetchWithRetry(`${status.mdPath}`, options);
                         // eslint-disable-next-line no-await-in-loop
-                        let content = await response.text();
+                        const content = await response.text();
                         let docx;
-
-                        // Sample Image URL [image0]: https://main--bacom-graybox--adobecom.aem.page/media_115d4450fd3ef2f1559f63e25d7e299eaba9b79ee.jpeg#width=2560&height=1600
-                        const imageRegex = /\[image.*\]: https:\/\/.*\/media_.*\.(?:jpg|jpeg|png|gif|bmp|webp)#width=\d+&height=\d+/g;
-                        const imageMatches = content.match(imageRegex);
-
-                        // Delete all the images from the content, these get added only in .md file and don't exist in the docx file
-                        if (imageMatches) {
-                            imageMatches.forEach((match) => {
-                                // Remove the image matches from content
-                                content = content.replace(match, '');
-                            });
-                        }
 
                         if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
                             // Process the Graybox Styles and Links with Mdast to Docx conversion
@@ -206,7 +193,7 @@ async function processFiles({
                             // Copy Destination folder path, no file name
                             const copyDestinationFolder = `${status.path.substring(0, status.path.lastIndexOf('/')).replace('/'.concat(experienceName), '')}`;
                             const copyDestFilePath = `${copyDestinationFolder}/${status.fileName}`;
-                            
+
                             // Add to processed files list
                             processedFiles.push({
                                 fileName: status.fileName,
@@ -240,21 +227,15 @@ async function processFiles({
                         // eslint-disable-next-line no-await-in-loop
                         const response = await sharepoint.fetchWithRetry(`${status.mdPath}`, options);
                         // eslint-disable-next-line no-await-in-loop
-                        let content = await response.text();
-                        logger.info(`Type of content: ${typeof content}`);
-                        logger.info(`In Process-doc-worker, Processing Excel file for project: ${project} Content: ${util.inspect(content, { depth: null, maxArrayLength: null, colors: false })}`);
-                        
+                        const content = await response.text();
                         // Check if we need to convert the transformed Excel content to an actual Excel file
                         // Transform graybox URLs to non-graybox URLs
                         if (content.includes(experienceName) || content.includes(gbDomainSuffix)) {
-                            const transformedExcelContent = await updateExcel(content, experienceName, helixAdminApiKey);
-                            logger.info(`In Process-doc-worker, After updating Excel file for project: ${project} Content: ${util.inspect(transformedExcelContent, { depth: null, maxArrayLength: null, colors: false })}`);
+                            const transformedExcelContent = await updateExcel(content, experienceName);
                             const excelBuffer = convertJsonToExcel(transformedExcelContent);
-                            // content = content.replaceAll(`/${experienceName}/`, '/').replaceAll(gbDomainSuffix, '');
                             // Write the transformed content back
                             const destinationFilePath = `${status.path.substring(0, status.path.lastIndexOf('/') + 1).replace('/'.concat(experienceName), '')}${status.fileName}`;
 
-                            logger.info(`In Process-doc-worker, Writing transformed content to file for project: ${project} Destination File Path: ${destinationFilePath}`);
                             // eslint-disable-next-line no-await-in-loop
                             await filesWrapper.writeFile(`graybox_promote${project}/excel${destinationFilePath}`, excelBuffer);
 
@@ -357,10 +338,10 @@ async function processFiles({
     });
 
     await Promise.all(allProcessingPromises); // await all async functions in the array are executed
-    
+
     // Write the processed files list to a JSON file
     await filesWrapper.writeFile(`graybox_promote${project}/processed_files.json`, processedFiles);
-    
+
     await updateStatuses(promoteBatchesJson, copyBatchesJson, project, filesWrapper, processDocxErrors, sharepoint, projectExcelPath, processedFiles);
 }
 
@@ -380,12 +361,12 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
     try {
         const promoteExcelValues = [['Step 2 of 5: Processing files for Graybox blocks, styles and links completed', toUTCStr(new Date()), '', '']];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
-        
+
         // Add processed files summary to Excel
-        const docxCount = processedFiles.filter(file => file.fileType === 'docx').length;
-        const excelCount = processedFiles.filter(file => file.fileType === 'excel').length;
-        const otherCount = processedFiles.filter(file => file.fileType === 'other').length;
-        
+        const docxCount = processedFiles.filter((file) => file.fileType === 'docx').length;
+        const excelCount = processedFiles.filter((file) => file.fileType === 'excel').length;
+        const otherCount = processedFiles.filter((file) => file.fileType === 'other').length;
+
         const filesSummaryValues = [[
             `Processed Files Summary: ${processedFiles.length} total files (${docxCount} DOCX, ${excelCount} Excel, ${otherCount} Other)`,
             toUTCStr(new Date()),

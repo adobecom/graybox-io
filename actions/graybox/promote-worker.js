@@ -76,13 +76,9 @@ async function main(params) {
     // Collect all promises from the forEach loop
     // eslint-disable-next-line no-restricted-syntax
     for (const promoteFilePath of promoteFilePaths) {
-        // eslint-disable-next-line no-await-in-loop
-        
         // Check if the file is a docx or xlsx based on file extension
         const isExcelFile = promoteFilePath.toLowerCase().endsWith('.xlsx') || promoteFilePath.toLowerCase().endsWith('.xls');
         const folderType = isExcelFile ? 'excel' : 'docx';
-        logger.info(`In Promote Content Worker, for project: ${project} for Batch Name ${batchName} promoteFilePath: ${promoteFilePath} isExcelFile: ${isExcelFile} folderType: ${folderType}`);
-        
         // eslint-disable-next-line no-await-in-loop
         const promoteFile = await filesWrapper.readFileIntoBuffer(`graybox_promote${project}/${folderType}${promoteFilePath}`);
         if (promoteFile) {
