@@ -46,10 +46,11 @@ async function main(params) {
 
     const filesWrapper = await initFilesWrapper(logger);
     const sharepoint = new Sharepoint(appConfig);
+    const project = `${gbRootFolder}/${experienceName}`;
 
     try {
         // Update Promote Status
-        const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '']];
+        const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '', '']];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteTriggeredExcelValues);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Initiate Promote: ${err}`);
@@ -61,6 +62,11 @@ async function main(params) {
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const gbFiles = await findAllFiles(experienceName, appConfig, sharepoint);
+    const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
+    await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
+
+    // Write all the files to a master list file
+    await filesWrapper.writeFile(`graybox_promote${project}/master_list.json`, gbFiles);
 
     // Create Batch Status JSON
     const batchStatusJson = {};
@@ -85,8 +91,6 @@ async function main(params) {
 
     // Promote Batches JSON
     const promoteBatchesJson = {};
-
-    const project = `${gbRootFolder}/${experienceName}`;
 
     // create batches to process the data
     const gbFilesBatchArray = [];
@@ -208,6 +212,7 @@ async function findAllGrayboxFiles({
     const pPathRegExp = new RegExp(`.*:${gbRoot}`);
     const pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
     const gbFiles = [];
+    // gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
     while (gbFolders.length !== 0) {
         const uri = `${baseURI}${gbFolders.shift()}:/children?$top=${MAX_CHILDREN}`;
         // eslint-disable-next-line no-await-in-loop
