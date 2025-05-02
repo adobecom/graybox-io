@@ -1,13 +1,14 @@
 {
   "name": "graybox",
   "version": "0.0.1",
+  "type": "module",
   "private": true,
   "dependencies": {
     "@adobe/aio-lib-core-logging": "^3.0.1",
     "@adobe/aio-lib-files": "^4.0.1",
-    "@adobe/aio-sdk": "^5",
-    "@azure/msal-node": "^2.6.5",
-    "milo-md2docx": "^1.8.0",
+    "@adobe/aio-sdk": "^6.0.0",
+    "@azure/msal-node": "1.16.0",
+    "milo-md2docx": "1.23.0",
     "milo-parse-markdown": "^1.0.0",
     "node-fetch": "^2.6.0",
     "openwhisk": "^3.21.8",

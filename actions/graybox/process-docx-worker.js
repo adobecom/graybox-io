@@ -15,17 +15,15 @@
 * from Adobe.
 ************************************************************************* */
 
-const fetch = require('node-fetch');
-const { Readable } = require('stream');
-const {
-    getAioLogger, toUTCStr
-} = require('../utils');
-const AppConfig = require('../appConfig');
-const HelixUtils = require('../helixUtils');
-const Sharepoint = require('../sharepoint');
-const { updateDocument } = require('../docxUpdater');
-const { updateExcel, convertJsonToExcel } = require('../excelHandler');
-const initFilesWrapper = require('./filesWrapper');
+import fetch from 'node-fetch';
+import { Readable } from 'stream';
+import { getAioLogger, toUTCStr } from '../utils.js';
+import AppConfig from '../appConfig.js';
+import HelixUtils from '../helixUtils.js';
+import Sharepoint from '../sharepoint.js';
+import { updateDocument } from '../docxUpdater.js';
+import { updateExcel, convertJsonToExcel } from '../excelHandler.js';
+import initFilesWrapper from './filesWrapper.js';
 
 const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
 const gbDomainSuffix = '-graybox';
@@ -413,4 +411,4 @@ function exitAction(resp) {
     return resp;
 }
 
-exports.main = main;
+export { main };

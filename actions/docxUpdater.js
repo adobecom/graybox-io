@@ -14,10 +14,10 @@
 * is strictly forbidden unless prior written permission is obtained
 * from Adobe.
 ************************************************************************* */
-const parseMarkdown = require('milo-parse-markdown').default;
-const { mdast2docx } = require('../node_modules/milo-md2docx/lib/index');
-const { getAioLogger } = require('./utils');
-const DEFAULT_STYLES = require('../defaultstyles.xml');
+import parseMarkdown from 'milo-parse-markdown';
+import { mdast2docx } from 'milo-md2docx';
+import { getAioLogger } from './utils.js';
+import DEFAULT_STYLES from './defaultstyles.xml.js';
 
 const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
 const emptyString = '';
@@ -209,6 +209,6 @@ async function generateDocxFromMdast(mdast, hlxAdminApiKey) {
     return docx;
 }
 
-module.exports = {
+export {
     updateDocument,
 };

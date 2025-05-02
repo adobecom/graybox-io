@@ -15,12 +15,10 @@
 * from Adobe.
 ************************************************************************* */
 
-const initFilesWrapper = require('./filesWrapper');
-const {
-    getAioLogger, isFilePatternMatched, toUTCStr
-} = require('../utils');
-const AppConfig = require('../appConfig');
-const Sharepoint = require('../sharepoint');
+import initFilesWrapper from './filesWrapper.js';
+import { getAioLogger, isFilePatternMatched, toUTCStr } from '../utils.js';
+import AppConfig from '../appConfig.js';
+import Sharepoint from '../sharepoint.js';
 
 const logger = getAioLogger();
 const MAX_CHILDREN = 1000;
@@ -245,4 +243,4 @@ async function findAllGrayboxFiles({
     return gbFiles;
 }
 
-exports.main = main;
+export { main };
