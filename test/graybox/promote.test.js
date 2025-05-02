@@ -19,7 +19,7 @@ import openwhisk from 'openwhisk';
 import { getAioLogger } from '../../actions/utils.js';
 import validateAction from '../../actions/graybox/validateAction.js';
 import AppConfig from '../../actions/appConfig.js';
-import main from '../../actions/graybox/promote.js';
+import { main } from '../../actions/graybox/promote.js';
 
 jest.mock('openwhisk');
 jest.mock('../../actions/utils');
