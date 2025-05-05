@@ -15,8 +15,8 @@
 * from Adobe.
 ************************************************************************* */
 
-const xlsx = require('xlsx');
-const { getAioLogger } = require('./utils');
+import xlsx from 'xlsx';
+import { getAioLogger } from './utils.js';
 
 const logger = getAioLogger();
 
@@ -29,7 +29,7 @@ export async function updateExcel(content, expName) {
         const jsonContent = typeof content === 'string' ? JSON.parse(content) : content;
         // Process all columns that might contain URLs
         if (jsonContent && jsonContent.columns) {
-            for (let i = 0; i < jsonContent.columns.length; i++) {
+            for (let i = 0; i < jsonContent.columns.length; i += 1) {
                 const column = jsonContent.columns[i];
                 if (typeof column === 'string' && (column.includes(expName) || column.includes(gbDomainSuffix))) {
                     jsonContent.columns[i] = column.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
@@ -38,9 +38,9 @@ export async function updateExcel(content, expName) {
         }
         // Process all data rows that might contain URLs
         if (jsonContent && jsonContent.data && Array.isArray(jsonContent.data)) {
-            jsonContent.data.forEach(row => {
+            jsonContent.data.forEach((row) => {
                 if (Array.isArray(row)) {
-                    for (let i = 0; i < row.length; i++) {
+                    for (let i = 0; i < row.length; i += 1) {
                         const cell = row[i];
                         if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
                             row[i] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);

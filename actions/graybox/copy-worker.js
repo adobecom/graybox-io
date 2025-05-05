@@ -15,10 +15,10 @@
 * from Adobe.
 ************************************************************************* */
 
-const { getAioLogger, toUTCStr } = require('../utils');
-const AppConfig = require('../appConfig');
-const Sharepoint = require('../sharepoint');
-const initFilesWrapper = require('./filesWrapper');
+import { getAioLogger, toUTCStr } from '../utils.js';
+import AppConfig from '../appConfig.js';
+import Sharepoint from '../sharepoint.js';
+import initFilesWrapper from './filesWrapper.js';
 
 const logger = getAioLogger();
 
@@ -173,4 +173,4 @@ function exitAction(resp) {
     return resp;
 }
 
-exports.main = main;
+export { main };
