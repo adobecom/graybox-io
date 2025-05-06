@@ -233,10 +233,12 @@ async function findAllGrayboxFiles({
                     } else if (pathsToSelectRegExp.test(itemPath)) {
                         logger.info(`Found file to promote and its metadata: ${JSON.stringify(item)}`);
                         // Store only createdDateTime and path in metadata
+                        logger.info(`SImplified item path: ${itemPath.replace(experienceName, '')}`);
                         const simplifiedMetadata = {
                             createdDateTime: item.createdDateTime,
                             lastModifiedDateTime: item.lastModifiedDateTime,
-                            path: itemPath
+                            fullPath: itemPath,
+                            path: itemPath.replace(`/${experienceName}`, '')
                         };
                         gbFilesMetadata.push(simplifiedMetadata);
                         gbFiles.push(itemPath);

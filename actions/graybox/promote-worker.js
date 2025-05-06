@@ -35,6 +35,7 @@ async function main(params) {
     let responsePayload;
     let promotes = [];
     const failedPromotes = [];
+    const newerDestinationFiles = [];
 
     const project = params.project || '';
     const batchName = params.batchName || '';
@@ -107,6 +108,41 @@ async function main(params) {
                             lastModifiedDateTime: fileMetadata.lastModifiedDateTime,
                             path: fileMetadata.path
                         });
+
+                        const sourceObjects = masterListMetadata.sourceMetadata || [];
+                        // Find the source object where the path is included in fileMetadata.path
+                        const matchingSourceObject = sourceObjects.find(sourceObj => {
+                            return fileMetadata.path.includes(sourceObj.path);
+                        });
+                        
+                        if (matchingSourceObject) {
+                            logger.info(`Found matching source metadata for ${fileMetadata.path}: ${JSON.stringify(matchingSourceObject)}`);
+                            const sourceCreatedDate = new Date(matchingSourceObject.createdDateTime);
+                            const destLastModifiedDate = new Date(fileMetadata.lastModifiedDateTime);
+                            
+                            // Compare dates including time, minutes and seconds
+                            if (destLastModifiedDate.getTime() > sourceCreatedDate.getTime()) { 
+                                logger.info(`Destination file is newer than source file: 
+                                    Source created: ${matchingSourceObject.createdDateTime}, 
+                                    Destination last modified: ${fileMetadata.lastModifiedDateTime}, 
+                                    Path: ${fileMetadata.path}`);
+                                    
+                                // Add to the array of newer destination files
+                                newerDestinationFiles.push({
+                                    path: fileMetadata.path,
+                                    sourceCreatedDateTime: matchingSourceObject.createdDateTime,
+                                    destinationLastModifiedDateTime: fileMetadata.lastModifiedDateTime
+                                });
+                            } else {
+                                logger.info(`Source file is newer than destination file: 
+                                    Source created: ${matchingSourceObject.createdDateTime}, 
+                                    Destination last modified: ${fileMetadata.lastModifiedDateTime}, 
+                                    Path: ${fileMetadata.path}`);
+                            }
+
+                        } else {
+                            logger.warn(`No matching source metadata found for ${fileMetadata.path}`);
+                        }
                         
                         // Write the updated metadata back to the file
                         await filesWrapper.writeFile(`graybox_promote${project}/master_list_metadata.json`, masterListMetadata);
@@ -130,6 +166,25 @@ async function main(params) {
             } else {
                 failedPromotes.push(promoteFilePath);
             }
+        }
+    }
+
+    // Save the newer destination files to a JSON file
+    if (newerDestinationFiles.length > 0) {
+        await filesWrapper.writeFile(`graybox_promote${project}/newer_destination_files.json`, newerDestinationFiles);
+        logger.info(`Saved ${newerDestinationFiles.length} newer destination files to newer_destination_files.json`);
+        
+        // Update the project Excel with the newer destination files data
+        try {
+            const newerFilesExcelValues = [
+                [`Newer destination files detected`, toUTCStr(new Date()), 
+                 `${newerDestinationFiles.length} files in destination are newer than source`, 
+                 JSON.stringify(newerDestinationFiles.map(file => file.path))]
+            ];
+            await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', newerFilesExcelValues);
+            logger.info(`Updated project Excel with newer destination files information`);
+        } catch (err) {
+            logger.error(`Error occurred while updating Excel with newer destination files: ${err}`);
         }
     }
 
