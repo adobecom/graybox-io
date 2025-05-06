@@ -272,6 +272,18 @@ class Sharepoint {
         });
     }
 
+    /* async getFileMetadata(relativePath) {
+        const fileResponse = await this.fetchWithRetry(`${graphBaseUrl}/root:/${relativePath}:/listItem/fields`, {
+            method: 'GET',
+            headers: await defaultHeaders(),
+        }, 10000, 'json', null, [404]);
+        if (fileResponse.statusCode === 200) {
+            return fileResponse.json;
+        }
+        logger.error(`Error during SharePoint file metadata request of ${relativePath} (${fileResponse.statusCode}): ${fileResponse.body}`);
+        return fileResponse;
+    }; */
+
     getHeadersStr(response) {
         const headers = {};
         response?.headers?.forEach((value, name) => {
@@ -288,6 +300,33 @@ class Sharepoint {
         const logStr = `Status is ${response.status} with headers ${hdrStr}`;
 
         if (logStr.toUpperCase().indexOf('RATE') > 0 || logStr.toUpperCase().indexOf('RETRY') > 0) logger.info(logStr);
+    }
+
+    async checkFileExists(filePath, isGraybox = false) {
+        const sp = await this.appConfig.getSpConfig();
+        const options = await this.getAuthorizedRequestOption();
+        const baseURI = isGraybox ? sp.api.file.get.gbBaseURI : sp.api.file.get.baseURI;
+        const response = await this.fetchWithRetry(`${baseURI}${filePath}`, options);
+        return response.ok;
+    }
+
+    async getFileMetadata(filePath, isGraybox = false) {
+        const sp = await this.appConfig.getSpConfig();
+        const options = await this.getAuthorizedRequestOption();
+        const baseURI = isGraybox ? sp.api.file.get.gbBaseURI : sp.api.file.get.baseURI;
+        const response = await this.fetchWithRetry(`${baseURI}${filePath}`, options);
+        
+        if (!response.ok) {
+            logger.error(`Error getting file metadata for ${filePath}: ${response.status}`);
+            return null;
+        }
+
+        const metadata = await response.json();
+        return {
+            createdDateTime: metadata.createdDateTime,
+            lastModifiedDateTime: metadata.lastModifiedDateTime,
+            path: `${metadata.parentReference.path.replace(/.*:.*:/, '')}/${metadata.name}`
+        };
     }
 }
 

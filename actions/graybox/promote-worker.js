@@ -83,6 +83,44 @@ async function main(params) {
         const promoteFile = await filesWrapper.readFileIntoBuffer(`graybox_promote${project}/${folderType}${promoteFilePath}`);
         if (promoteFile) {
             // eslint-disable-next-line no-await-in-loop
+            // Check if the file already exists in the destination
+            const fileExists = await sharepoint.checkFileExists(promoteFilePath);
+            
+            if (fileExists) {
+                // Log metadata of the existing file
+                logger.info(`File already exists at ${promoteFilePath}, checking metadata`);
+                try {
+                    const fileMetadata = await sharepoint.getFileMetadata(promoteFilePath);
+                    // Get the source metadata to compare with destination
+                    const masterListMetadata = await filesWrapper.readFileIntoObject(`graybox_promote${project}/master_list_metadata.json`);
+                    logger.info(`Master List Metadata: ${JSON.stringify(masterListMetadata)}`);
+                    
+                    if (masterListMetadata) {
+                        // Initialize destinationMetadata array if it doesn't exist
+                        if (!masterListMetadata.destinationMetadata) {
+                            masterListMetadata.destinationMetadata = [];
+                        }
+                        
+                        // Add the destination file metadata to the array
+                        masterListMetadata.destinationMetadata.push({
+                            createdDateTime: fileMetadata.createdDateTime,
+                            lastModifiedDateTime: fileMetadata.lastModifiedDateTime,
+                            path: fileMetadata.path
+                        });
+                        
+                        // Write the updated metadata back to the file
+                        await filesWrapper.writeFile(`graybox_promote${project}/master_list_metadata.json`, masterListMetadata);
+                        logger.info(`Updated master_list_metadata.json with destination metadata for ${promoteFilePath}`);
+                    } else {
+                        logger.warn(`Could not find master_list_metadata.json for project ${project}`);
+                    }
+                    logger.info(`Existing file metadata: ${JSON.stringify(fileMetadata)}`);
+                } catch (error) {
+                    logger.warn(`Failed to get metadata for existing file ${promoteFilePath}: ${error.message}`);
+                }
+            }
+            
+            // If file doesn't exist or we're overwriting it anyway
             const saveStatus = await sharepoint.saveFileSimple(promoteFile, promoteFilePath);
 
             if (saveStatus?.success) {
