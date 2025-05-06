@@ -129,7 +129,7 @@ async function main(params) {
                                     
                                 // Add to the array of newer destination files
                                 newerDestinationFiles.push({
-                                    path: fileMetadata.path,
+                                    path: fileMetadata.path.replace(/^\/drives\/.*\/root:/, ''),
                                     sourceCreatedDateTime: matchingSourceObject.createdDateTime,
                                     destinationLastModifiedDateTime: fileMetadata.lastModifiedDateTime
                                 });
