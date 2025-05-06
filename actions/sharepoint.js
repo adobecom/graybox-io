@@ -272,18 +272,6 @@ class Sharepoint {
         });
     }
 
-    /* async getFileMetadata(relativePath) {
-        const fileResponse = await this.fetchWithRetry(`${graphBaseUrl}/root:/${relativePath}:/listItem/fields`, {
-            method: 'GET',
-            headers: await defaultHeaders(),
-        }, 10000, 'json', null, [404]);
-        if (fileResponse.statusCode === 200) {
-            return fileResponse.json;
-        }
-        logger.error(`Error during SharePoint file metadata request of ${relativePath} (${fileResponse.statusCode}): ${fileResponse.body}`);
-        return fileResponse;
-    }; */
-
     getHeadersStr(response) {
         const headers = {};
         response?.headers?.forEach((value, name) => {
