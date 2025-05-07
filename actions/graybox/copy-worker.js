@@ -19,6 +19,7 @@ import { getAioLogger, toUTCStr } from '../utils.js';
 import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
+import { checkAndCompareFileDates, updateExcelWithNewerFiles } from './fileComparisonUtils.js';
 
 const logger = getAioLogger();
 
@@ -62,8 +63,20 @@ async function main(params) {
 
     // Process the Copy Content
     const copyFilePathsJson = copyBatchJson.files || [];
+    const newerDestinationFiles = [];
+
     for (let i = 0; i < copyFilePathsJson.length; i += 1) {
         const copyPathsEntry = copyFilePathsJson[i];
+        
+        // Check file existence and compare dates
+        const { newerDestinationFiles: newFiles } = await checkAndCompareFileDates({
+            sharepoint,
+            filesWrapper,
+            project,
+            filePath: copyPathsEntry.copyDestFilePath
+        });
+        newerDestinationFiles.push(...newFiles);
+
         // Download the grayboxed file and save it to default content location
         // eslint-disable-next-line no-await-in-loop
         const { fileDownloadUrl } = await sharepoint.getFileData(copyPathsEntry.copySourceFilePath, true);
@@ -79,6 +92,16 @@ async function main(params) {
         } else {
             failedPromotes.push(copyPathsEntry.copyDestFilePath);
         }
+    }
+
+    // Update the Excel with newer destination files
+    if (newerDestinationFiles.length > 0) {
+        await updateExcelWithNewerFiles({
+            sharepoint,
+            projectExcelPath,
+            newerDestinationFiles,
+            workerType: 'copy'
+        });
     }
 
     logger.info(`In Copy Worker, Promotes for project: ${project} for batchname ${batchName} no.of files ${promotes.length}, files list: ${JSON.stringify(promotes)}`);
