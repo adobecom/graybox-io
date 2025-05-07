@@ -19,6 +19,7 @@ import { getAioLogger, toUTCStr } from '../utils.js';
 import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
+import { checkAndCompareFileDates, updateExcelWithNewerFiles } from './fileComparisonUtils.js';
 
 const logger = getAioLogger();
 
@@ -35,6 +36,7 @@ async function main(params) {
     let responsePayload;
     let promotes = [];
     const failedPromotes = [];
+    const newerDestinationFiles = [];
 
     const project = params.project || '';
     const batchName = params.batchName || '';
@@ -82,7 +84,16 @@ async function main(params) {
         // eslint-disable-next-line no-await-in-loop
         const promoteFile = await filesWrapper.readFileIntoBuffer(`graybox_promote${project}/${folderType}${promoteFilePath}`);
         if (promoteFile) {
-            // eslint-disable-next-line no-await-in-loop
+            // Check file existence and compare dates
+            const { newerDestinationFiles: newFiles } = await checkAndCompareFileDates({
+                sharepoint,
+                filesWrapper,
+                project,
+                filePath: promoteFilePath
+            });
+            newerDestinationFiles.push(...newFiles);
+            
+            // If file doesn't exist or we're overwriting it anyway
             const saveStatus = await sharepoint.saveFileSimple(promoteFile, promoteFilePath);
 
             if (saveStatus?.success) {
@@ -93,6 +104,16 @@ async function main(params) {
                 failedPromotes.push(promoteFilePath);
             }
         }
+    }
+
+    // Update the Excel with newer destination files
+    if (newerDestinationFiles.length > 0) {
+        await updateExcelWithNewerFiles({
+            sharepoint,
+            projectExcelPath,
+            newerDestinationFiles,
+            workerType: 'promote'
+        });
     }
 
     // Wait for all the promises to resolve
