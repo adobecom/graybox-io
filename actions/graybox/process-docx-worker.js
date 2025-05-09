@@ -25,10 +25,22 @@ import { updateDocument } from '../docxUpdater.js';
 import { updateExcel, convertJsonToExcel } from '../excelHandler.js';
 import initFilesWrapper from './filesWrapper.js';
 
-// const gbStyleExpressions = ['gb-', 'graybox']; // graybox style expressions
 const gbStyleExpression = 'gb-'; // graybox style expressions
 const gbBlockName = 'graybox'; // graybox block name
 const gbDomainSuffix = '-graybox';
+
+/**
+ * Checks if the content contains any graybox-related patterns
+ * @param {string} content - The content to check
+ * @param {string} experienceName - The experience name to check for
+ * @returns {boolean} - True if content contains any graybox patterns
+ */
+function hasGrayboxContent(content, experienceName) {
+    return content.includes(experienceName) || 
+           content.includes(gbStyleExpression) || 
+           content.includes(gbDomainSuffix) || 
+           content.includes(gbBlockName);
+}
 
 const BATCH_REQUEST_PROMOTE = 200;
 
@@ -142,7 +154,7 @@ async function processFiles({
                         // eslint-disable-next-line no-await-in-loop
                         const content = await response.text();
                         let docx;
-                        if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix) || content.includes(gbBlockName)) {
+                        if (hasGrayboxContent(content, experienceName)) {
                             // Process the Graybox Styles and Links with Mdast to Docx conversion
                             // eslint-disable-next-line no-await-in-loop
                             docx = await updateDocument(content, experienceName, helixAdminApiKey);
