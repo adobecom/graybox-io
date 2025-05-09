@@ -25,7 +25,8 @@ import { updateDocument } from '../docxUpdater.js';
 import { updateExcel, convertJsonToExcel } from '../excelHandler.js';
 import initFilesWrapper from './filesWrapper.js';
 
-const gbStyleExpression = 'gb-'; // graybox style expression. need to revisit if there are any more styles to be considered.
+// const gbStyleExpressions = ['gb-', 'graybox']; // graybox style expressions
+const gbStyleExpression = 'gb-'; // graybox style expressions
 const gbDomainSuffix = '-graybox';
 
 const BATCH_REQUEST_PROMOTE = 200;
@@ -140,6 +141,10 @@ async function processFiles({
                         // eslint-disable-next-line no-await-in-loop
                         const content = await response.text();
                         let docx;
+                        logger.info(`Process-doc-worker: content for ${experienceName}: ${content}`);
+                        /* if (content.includes(experienceName) || 
+                            gbStyleExpressions.some(expr => content.includes(expr)) || 
+                            content.includes(gbDomainSuffix)) { */
 
                         if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
                             // Process the Graybox Styles and Links with Mdast to Docx conversion

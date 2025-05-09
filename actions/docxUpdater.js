@@ -37,9 +37,11 @@ async function updateDocument(content, expName, hlxAdminApiKey) {
     firstGtRows = [];
     let docx;
 
+    logger.info(`DocxUpdater: content for ${expName}: ${content}`);
     const state = { content: { data: content }, log: '' };
     await parseMarkdown(state);
     const { mdast } = state.content;
+    logger.info(`DocxUpdater: mdast for ${expName}: ${JSON.stringify(mdast)}`);
     const mdastChildren = mdast.children;
 
     // Transform Graybox Links
