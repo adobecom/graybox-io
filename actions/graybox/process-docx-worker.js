@@ -27,6 +27,7 @@ import initFilesWrapper from './filesWrapper.js';
 
 // const gbStyleExpressions = ['gb-', 'graybox']; // graybox style expressions
 const gbStyleExpression = 'gb-'; // graybox style expressions
+const gbBlockName = 'graybox'; // graybox block name
 const gbDomainSuffix = '-graybox';
 
 const BATCH_REQUEST_PROMOTE = 200;
@@ -141,12 +142,7 @@ async function processFiles({
                         // eslint-disable-next-line no-await-in-loop
                         const content = await response.text();
                         let docx;
-                        logger.info(`Process-doc-worker: content for ${experienceName}: ${content}`);
-                        /* if (content.includes(experienceName) || 
-                            gbStyleExpressions.some(expr => content.includes(expr)) || 
-                            content.includes(gbDomainSuffix)) { */
-
-                        if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix)) {
+                        if (content.includes(experienceName) || content.includes(gbStyleExpression) || content.includes(gbDomainSuffix) || content.includes(gbBlockName)) {
                             // Process the Graybox Styles and Links with Mdast to Docx conversion
                             // eslint-disable-next-line no-await-in-loop
                             docx = await updateDocument(content, experienceName, helixAdminApiKey);
