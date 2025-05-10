@@ -154,7 +154,7 @@ async function main(params) {
     // Update the Project Excel with the Promote Status
     try {
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
-        const promoteExcelValues = [[`Step 4 of 5: Promote Copy completed for Batch ${batchName}`, toUTCStr(new Date()), sFailedPromoteStatuses, '']];
+        const promoteExcelValues = [[`Step 4 of 5: Promote Copy completed for Batch ${batchName}`, toUTCStr(new Date()), sFailedPromoteStatuses, JSON.stringify(promotes)]];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Promote Copy: ${err}`);
