@@ -161,38 +161,6 @@ async function main(params) {
                 // Update Preview Status
                 await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
 
-                // Write status to status.json
-                // TODO: Check again
-                /* const statusJsonPath = `graybox_promote/bacom-graybox/${experienceName}/status.json`;
-                let statusJson = {};
-                try {
-                    statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);
-                } catch (err) {
-                    // If file doesn't exist, create new object
-                    statusJson = { statuses: [] };
-                }
-                
-                // Add new status entry
-                if (projectStatusJson.status === 'initial_preview_in_progress') {
-                    statusJson.statuses.push({
-                        step: 'Initial Preview Of Graybox Content Completed',
-                        stepName: 'initial_preview_done',
-                        timestamp: toUTCStr(new Date()),
-                        failures: failedPreviews.length > 0 ? 
-                            `Failed Previews(Please preview these files individually or with Milo Bulk Preview tool, and trigger Promote): \n${failedPreviews.join('\n')}` : '',
-                        files: previewStatuses.map(status => status.path)
-                    });
-                } else if (projectStatusJson.status === 'final_preview_in_progress') {
-                    statusJson.statuses.push({
-                        step: 'Final Preview Of Promoted Content Completed',
-                        stepName: 'final_preview_done',
-                        timestamp: toUTCStr(new Date()),
-                        failures: failedPreviews.length > 0 ? `Failed Previews: \n${failedPreviews.join('\n')}` : '',
-                        files: []
-                    });
-                } */
-                
-                await filesWrapper.writeFile(statusJsonPath, statusJson);
             } catch (err) {
                 logger.error(`Error Occured while updating Excel during Graybox Preview: ${err}`);
             }

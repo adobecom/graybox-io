@@ -447,7 +447,7 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', unprocessedSummaryValues);
 
         // Write status to status.json
-        const statusJsonPath = `graybox_promote/bacom-graybox/${experienceName}/status.json`;
+        const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
         let statusJson = {};
         try {
             statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);

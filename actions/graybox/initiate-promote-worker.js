@@ -52,9 +52,6 @@ async function main(params) {
 
     logger.info(`In Initiate Promote Worker, projectStatusJson: ${JSON.stringify(projectStatusJson)}`);
 
-    // write to JSONs to AIO Files for Projects Queue and Project Status
-    // await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
-
     try {
         // Update Promote Status
         const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '', '']];
@@ -186,29 +183,6 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, Project Status Json: ${JSON.stringify(statusJson)}`);
     const projectBatchStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/batch_status.json`);
     logger.info(`In Initiate Promote Worker, Project Batch Status Json: ${JSON.stringify(projectBatchStatusJson)}`);
-
-    /* try {
-        // Write status to status.json
-        const statusJsonPath = `graybox_promote${project}/status.json`;
-        let statusJson = {};
-        try {
-            statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);
-        } catch (err) {
-            // If file doesn't exist, create new object
-            statusJson = { statuses: [] };
-        }
-        
-        // Add new status entry
-        statusJson.statuses.push({
-            step: 'Promote triggered',
-            timestamp: toUTCStr(new Date()),
-            files: gbFiles
-        });
-        
-        await filesWrapper.writeFile(statusJsonPath, statusJson);
-    } catch (err) {
-        logger.error(`Error Occured while updating Excel during Graybox Initiate Promote: ${err}`);
-    } */
 
     // process data in batches
     const responsePayload = 'Graybox Initiate Promote Worker action completed.';
