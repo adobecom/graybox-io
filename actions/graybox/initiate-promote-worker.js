@@ -46,11 +46,7 @@ async function main(params) {
     const sharepoint = new Sharepoint(appConfig);
     const project = `${gbRootFolder}/${experienceName}`;
 
-    const projectStatusJson = {};
-
-    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJson);
-
-    logger.info(`In Initiate Promote Worker, projectStatusJson: ${JSON.stringify(projectStatusJson)}`);
+    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, {});
 
     try {
         // Update Promote Status
@@ -154,7 +150,7 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
     // Create Project Status JSON
-    const projectStatusJsonUpdated = { status: 'initiated', params: inputParams, statuses: [
+    const projectStatusJson = { status: 'initiated', params: inputParams, statuses: [
         {
             stepName: 'initiated',
             step: 'Found files to promote',
@@ -162,11 +158,9 @@ async function main(params) {
             files: gbFiles
         }] };
 
-    logger.info(`In Initiate Promote Worker, projectStatusJsonUpdated: ${JSON.stringify(projectStatusJsonUpdated)}`);
-
     // write to JSONs to AIO Files for Projects Queue and Project Status
     await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
-    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJsonUpdated);
+    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJson);
     await filesWrapper.writeFile(`graybox_promote${project}/gbfile_batches.json`, gbFileBatchesJson);
     await filesWrapper.writeFile(`graybox_promote${project}/batch_status.json`, batchStatusJson);
     await filesWrapper.writeFile(`graybox_promote${project}/preview_status.json`, previewStatusJson);
@@ -224,7 +218,7 @@ async function findAllGrayboxFiles({
     const pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
     const gbFiles = [];
     const gbFilesMetadata = [];
-    gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
+    // gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
     while (gbFolders.length !== 0) {
         const uri = `${baseURI}${gbFolders.shift()}:/children?$top=${MAX_CHILDREN}`;
         // eslint-disable-next-line no-await-in-loop
