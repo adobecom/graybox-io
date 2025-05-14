@@ -16,6 +16,7 @@
 ************************************************************************* */
 
 import { getAioLogger, toUTCStr } from '../utils.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const logger = getAioLogger();
 
@@ -129,25 +130,14 @@ async function updateExcelWithNewerFiles({ sharepoint, projectExcelPath, newerDe
 
             // Write status to status.json
             const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
-            let statusJson = {};
-            try {
-                statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);
-            } catch (err) {
-                // If file doesn't exist, create new object
-                statusJson = { statuses: [] };
-            }
-            
-            // Add new status entry
-            statusJson.statuses.push({
+            const statusEntry = {
                 step: `Newer destination files detected while ${message}`,
-                timestamp: toUTCStr(new Date()),
                 newerFiles: {
                     count: newerDestinationFiles.length,
                     files: newerDestinationFiles.map(file => file.path)
                 }
-            });
-            
-            await filesWrapper.writeFile(statusJsonPath, statusJson);
+            };
+            await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry);
             logger.info(`${workerType.charAt(0).toUpperCase() + workerType.slice(1)} Worker: Updated project Excel with newer destination files information`);
         } catch (err) {
             logger.error(`Error occurred while updating Excel with newer destination files: ${err}`);

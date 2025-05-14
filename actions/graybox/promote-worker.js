@@ -20,6 +20,7 @@ import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
 import { checkAndCompareFileDates, updateExcelWithNewerFiles } from './fileComparisonUtils.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const logger = getAioLogger();
 
@@ -173,24 +174,13 @@ async function main(params) {
 
         // Write status to status.json
         const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
-        let statusJson = {};
-        try {
-            statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);
-        } catch (err) {
-            // If file doesn't exist, create new object
-            statusJson = { statuses: [] };
-        }
-        
-        // Add new status entry
-        statusJson.statuses.push({
+        const statusEntry = {
             step: `Step 3 of 5: Promote completed for Batch ${batchName}`,
             stepName: 'promoted',
-            timestamp: toUTCStr(new Date()),
             failures: sFailedPromoteStatuses,
             files: promotes
-        });
-        
-        await filesWrapper.writeFile(statusJsonPath, statusJson);
+        };
+        await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Promote: ${err}`);
     }

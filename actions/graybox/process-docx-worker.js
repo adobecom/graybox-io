@@ -24,6 +24,7 @@ import Sharepoint from '../sharepoint.js';
 import { updateDocument } from '../docxUpdater.js';
 import { updateExcel, convertJsonToExcel } from '../excelHandler.js';
 import initFilesWrapper from './filesWrapper.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const gbStyleExpression = 'gb-'; // graybox style expressions
 const gbBlockName = 'graybox'; // graybox block name
@@ -448,18 +449,8 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
 
         // Write status to status.json
         const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
-        let statusJson = {};
-        try {
-            statusJson = await filesWrapper.readFileIntoObject(statusJsonPath);
-        } catch (err) {
-            // If file doesn't exist, create new object
-            statusJson = { statuses: [] };
-        }
-        
-        // Add new status entries
-        statusJson.statuses.push({
+        const statusEntry = {
             step: 'Step 2 of 5: Processing files for Graybox blocks, styles and links completed',
-            timestamp: toUTCStr(new Date()),
             processedFiles: {
                 total: processedFiles.length,
                 docx: docxFiles.length,
@@ -471,9 +462,8 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
                 total: unprocessedFiles.length,
                 files: unprocessedFiles.map(file => file.sourcePath)
             }
-        });
-        
-        await filesWrapper.writeFile(statusJsonPath, statusJson);
+        };
+        await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Process Content Step: ${err}`);
     }
