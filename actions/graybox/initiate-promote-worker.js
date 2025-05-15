@@ -46,6 +46,8 @@ async function main(params) {
     const sharepoint = new Sharepoint(appConfig);
     const project = `${gbRootFolder}/${experienceName}`;
 
+    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, {});
+
     try {
         // Update Promote Status
         const promoteTriggeredExcelValues = [['Promote triggered', toUTCStr(new Date()), '', '']];
@@ -148,9 +150,13 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
     // Create Project Status JSON
-    const projectStatusJson = { status: 'initiated', params: inputParams };
-
-    logger.info(`In Initiate Promote Worker, projectStatusJson: ${JSON.stringify(projectStatusJson)}`);
+    const projectStatusJson = { status: 'initiated', params: inputParams, statuses: [
+        {
+            stepName: 'initiated',
+            step: 'Found files to promote',
+            timestamp: toUTCStr(new Date()),
+            files: gbFiles
+        }] };
 
     // write to JSONs to AIO Files for Projects Queue and Project Status
     await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);

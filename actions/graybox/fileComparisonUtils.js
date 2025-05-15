@@ -16,6 +16,7 @@
 ************************************************************************* */
 
 import { getAioLogger, toUTCStr } from '../utils.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const logger = getAioLogger();
 
@@ -113,8 +114,10 @@ async function checkAndCompareFileDates({ sharepoint, filesWrapper, project, fil
  * @param {string} params.projectExcelPath Project Excel path
  * @param {Array} params.newerDestinationFiles Array of newer destination files
  * @param {string} params.workerType Type of worker ('copy' or 'promote')
+ * @param {string} params.experienceName Experience name
+ * @param {Object} params.filesWrapper Files wrapper instance
  */
-async function updateExcelWithNewerFiles({ sharepoint, projectExcelPath, newerDestinationFiles, workerType }) {
+async function updateExcelWithNewerFiles({ sharepoint, projectExcelPath, newerDestinationFiles, workerType, experienceName, filesWrapper }) {
     const message = workerType === 'copy' ? 'Copying' : 'Promoting';
     if (newerDestinationFiles.length > 0) {
         try {
@@ -124,6 +127,17 @@ async function updateExcelWithNewerFiles({ sharepoint, projectExcelPath, newerDe
                  JSON.stringify(newerDestinationFiles.map(file => file.path))]
             ];
             await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', newerFilesExcelValues);
+
+            // Write status to status.json
+            const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
+            const statusEntry = {
+                step: `Newer destination files detected while ${message}`,
+                newerFiles: {
+                    count: newerDestinationFiles.length,
+                    files: newerDestinationFiles.map(file => file.path)
+                }
+            };
+            await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry);
             logger.info(`${workerType.charAt(0).toUpperCase() + workerType.slice(1)} Worker: Updated project Excel with newer destination files information`);
         } catch (err) {
             logger.error(`Error occurred while updating Excel with newer destination files: ${err}`);
