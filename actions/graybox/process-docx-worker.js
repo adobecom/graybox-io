@@ -24,6 +24,7 @@ import Sharepoint from '../sharepoint.js';
 import { updateDocument } from '../docxUpdater.js';
 import { updateExcel, convertJsonToExcel } from '../excelHandler.js';
 import initFilesWrapper from './filesWrapper.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const gbStyleExpression = 'gb-'; // graybox style expressions
 const gbBlockName = 'graybox'; // graybox block name
@@ -110,13 +111,14 @@ async function processFiles({
     }
 
     const project = `${gbRootFolder}/${experienceName}`;
-    // Read the Project Status in the current project's "status.json" file
-    const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
-
     const toBeStatus = 'process_content_in_progress';
-    // Update the In Progress Status in the current project's "status.json" file
-    projectStatusJson.status = toBeStatus;
-    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJson);
+    const statusEntry = {
+        step: 'Processing files for Graybox blocks, styles and links started',
+        stepName: toBeStatus,
+        files: []
+    };
+
+    await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, toBeStatus);
 
     // Update the Project Status in the parent "project_queue.json" file
     await changeProjectStatusInQueue(filesWrapper, gbRootFolder, experienceName, toBeStatus);
@@ -402,7 +404,7 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
     await filesWrapper.writeFile(`graybox_promote${project}/copy_batches.json`, copyBatchesJson);
     await filesWrapper.writeFile(`graybox_promote${project}/promote_batches.json`, promoteBatchesJson);
     // Update the Project Status in JSON files
-    updateProjectStatus(project, filesWrapper);
+    await updateProjectStatus(project, filesWrapper, processedFiles, unprocessedFiles);
 
     // Write the processDocxErrors to the AIO Files
     if (processContentErrors.length > 0) {
@@ -439,6 +441,25 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
         ]];
         logger.info(`In Process-doc-worker, for project unprocessedSummaryValues: ${project} Unprocessed Files Summary: ${JSON.stringify(unprocessedSummaryValues)}`);
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', unprocessedSummaryValues);
+
+        // Write status to status.json
+        const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
+        const statusEntry = {
+            step: 'Step 2 of 5: Processing files for Graybox blocks, styles and links completed',
+            stepName: 'processed',
+            processedFiles: {
+                total: processedFiles.length,
+                docx: docxFiles.length,
+                excel: excelFiles.length,
+                other: otherFiles.length,
+                files: processedFiles.map(file => file.sourcePath)
+            },
+            unprocessedFiles: {
+                total: unprocessedFiles.length,
+                files: unprocessedFiles.map(file => file.sourcePath)
+            }
+        };
+        await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry, 'processed');
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Process Content Step: ${err}`);
     }
@@ -451,12 +472,15 @@ async function updateStatuses(promoteBatchesJson, copyBatchesJson, project, file
  * @param {*} filesWrapper filesWrapper object
  * @returns updated project status
  */
-async function updateProjectStatus(project, filesWrapper) {
+async function updateProjectStatus(project, filesWrapper, processedFiles, unprocessedFiles) {
     // Update the Project Status in the current project's "status.json" file
-    const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
     const toBeStatus = 'processed';
-    projectStatusJson.status = toBeStatus;
-    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusJson);
+    const statusEntry = {
+        step: 'Processing files for Graybox blocks, styles and links completed',
+        stepName: toBeStatus,
+        files: processedFiles.map(file => file.sourcePath)
+    };
+    await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, toBeStatus);
 
     // Update the Project Status in the parent "project_queue.json" file
     const projectQueue = await changeProjectStatusInQueue(filesWrapper, project, toBeStatus);

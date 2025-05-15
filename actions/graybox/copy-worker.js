@@ -20,6 +20,7 @@ import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
 import { checkAndCompareFileDates, updateExcelWithNewerFiles } from './fileComparisonUtils.js';
+import { writeProjectStatus } from './statusUtils.js';
 
 const logger = getAioLogger();
 
@@ -100,7 +101,9 @@ async function main(params) {
             sharepoint,
             projectExcelPath,
             newerDestinationFiles,
-            workerType: 'copy'
+            workerType: 'copy',
+            experienceName,
+            filesWrapper
         });
     }
 
@@ -147,7 +150,7 @@ async function main(params) {
         const allBatchesPromoted = Object.keys(batchStatusJson).every((key) => batchStatusJson[key] === 'promoted');
         if (allBatchesPromoted) {
             // Update the Project Status in JSON files
-            updateProjectStatus(gbRootFolder, experienceName, filesWrapper);
+            await updateProjectStatus(gbRootFolder, experienceName, filesWrapper);
         }
     }
 
@@ -156,6 +159,16 @@ async function main(params) {
         const sFailedPromoteStatuses = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
         const promoteExcelValues = [[`Step 4 of 5: Promote Copy completed for Batch ${batchName}`, toUTCStr(new Date()), sFailedPromoteStatuses, JSON.stringify(promotes)]];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
+
+        // Write status to status.json
+        const statusJsonPath = `graybox_promote${gbRootFolder}/${experienceName}/status.json`;
+        const statusEntry = {
+            stepName: 'promote_copy_completed',
+            step: `Step 4 of 5: Promote Copy completed for Batch ${batchName}`,
+            failures: sFailedPromoteStatuses,
+            files: promotes
+        };
+        await writeProjectStatus(filesWrapper, statusJsonPath, statusEntry);
     } catch (err) {
         logger.error(`Error Occured while updating Excel during Graybox Promote Copy: ${err}`);
     }
