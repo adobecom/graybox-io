@@ -249,9 +249,9 @@ async function processFiles({
                         const content = await response.text();
                         // Check if we need to convert the transformed Excel content to an actual Excel file
                         // Transform graybox URLs to non-graybox URLs
-                        if (content.includes(experienceName) || content.includes(gbDomainSuffix)) {
+                        if (hasGrayboxContent(content, experienceName)) {
                             const transformedExcelContent = await updateExcel(content, experienceName);
-                            const excelBuffer = convertJsonToExcel(transformedExcelContent);
+                            const excelBuffer = convertJsonToExcel(transformedExcelContent, experienceName);
                             // Write the transformed content back
                             const destinationFilePath = `${status.path.substring(0, status.path.lastIndexOf('/') + 1).replace('/'.concat(experienceName), '')}${status.fileName}`;
 

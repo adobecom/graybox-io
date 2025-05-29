@@ -27,28 +27,82 @@ export async function updateExcel(content, expName) {
     try {
         // Parse the content as JSON
         const jsonContent = typeof content === 'string' ? JSON.parse(content) : content;
-        // Process all columns that might contain URLs
-        if (jsonContent && jsonContent.columns) {
-            for (let i = 0; i < jsonContent.columns.length; i += 1) {
-                const column = jsonContent.columns[i];
-                if (typeof column === 'string' && (column.includes(expName) || column.includes(gbDomainSuffix))) {
-                    jsonContent.columns[i] = column.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
-                }
-            }
-        }
-        // Process all data rows that might contain URLs
-        if (jsonContent && jsonContent.data && Array.isArray(jsonContent.data)) {
-            jsonContent.data.forEach((row) => {
-                if (Array.isArray(row)) {
-                    for (let i = 0; i < row.length; i += 1) {
-                        const cell = row[i];
-                        if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
-                            row[i] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+        
+        // Handle multi-sheet format
+        if (jsonContent[':type'] === 'multi-sheet' && jsonContent[':names'] && Array.isArray(jsonContent[':names'])) {
+            // Process each sheet defined in :names array
+            jsonContent[':names'].forEach((sheetName) => {
+                if (jsonContent[sheetName]) {
+                    const sheetData = jsonContent[sheetName];
+                    
+                    // Process columns if they exist
+                    if (sheetData.columns && Array.isArray(sheetData.columns)) {
+                        for (let i = 0; i < sheetData.columns.length; i += 1) {
+                            const column = sheetData.columns[i];
+                            if (typeof column === 'string' && (column.includes(expName) || column.includes(gbDomainSuffix))) {
+                                sheetData.columns[i] = column.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                            }
                         }
+                    }
+                    
+                    // Process data rows if they exist
+                    if (sheetData.data && Array.isArray(sheetData.data)) {
+                        sheetData.data.forEach((row) => {
+                            if (Array.isArray(row)) {
+                                for (let i = 0; i < row.length; i += 1) {
+                                    const cell = row[i];
+                                    if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
+                                        row[i] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                                    }
+                                }
+                            } else if (typeof row === 'object' && row !== null) {
+                                // Handle object rows
+                                Object.keys(row).forEach((key) => {
+                                    const cell = row[key];
+                                    if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
+                                        row[key] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                                    }
+                                });
+                            }
+                        });
                     }
                 }
             });
+        } else {
+            // Handle single sheet format (original implementation)
+            // Process all columns that might contain URLs
+            if (jsonContent && jsonContent.columns) {
+                for (let i = 0; i < jsonContent.columns.length; i += 1) {
+                    const column = jsonContent.columns[i];
+                    if (typeof column === 'string' && (column.includes(expName) || column.includes(gbDomainSuffix))) {
+                        jsonContent.columns[i] = column.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                    }
+                }
+            }
+            // Process all data rows that might contain URLs
+            if (jsonContent && jsonContent.data && Array.isArray(jsonContent.data)) {
+                jsonContent.data.forEach((row) => {
+                    if (Array.isArray(row)) {
+                        for (let i = 0; i < row.length; i += 1) {
+                            const cell = row[i];
+                            if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
+                                row[i] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                            }
+                        }
+                    } else if (typeof row === 'object' && row !== null) {
+                        Object.keys(row).forEach((key) => {
+                            const cell = row[key];
+                            if (typeof cell === 'string' && (cell.includes(expName) || cell.includes(gbDomainSuffix))) {
+                                row[key] = cell.replaceAll(`/${expName}/`, '/').replaceAll(gbDomainSuffix, emptyString);
+                            }
+                        });
+                    } else {
+                        logger.info(`In updateExcel - processing excel is not array or object`);
+                    }
+                });
+            }
         }
+        
         return JSON.stringify(jsonContent);
     } catch (err) {
         logger.error(`Error while updating Excel content: ${err}`);
@@ -61,7 +115,7 @@ export async function updateExcel(content, expName) {
  * @param {Object} jsonContent - The JSON content to convert.
  * @returns {Buffer} - The converted Excel content.
  */
-export function convertJsonToExcel(jsonContent) {
+export function convertJsonToExcel(jsonContent, expName) {
     try {
         // Parse JSON string if it's a string
         const parsedContent = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
@@ -105,7 +159,21 @@ export function convertJsonToExcel(jsonContent) {
             let worksheet;
             if (parsedContent.columns && parsedContent.data) {
                 // Create worksheet from columns and data arrays
-                worksheet = xlsx.utils.aoa_to_sheet([parsedContent.columns, ...parsedContent.data]);
+                // Ensure parsedContent.data is an array of arrays
+                const rows = [parsedContent.columns];
+                if (Array.isArray(parsedContent.data)) {
+                    // If data is an array of objects, convert each object to an array in the same order as columns
+                    if (parsedContent.data.length > 0 && typeof parsedContent.data[0] === 'object' && !Array.isArray(parsedContent.data[0])) {
+                        parsedContent.data.forEach((dataObj) => {
+                            const row = parsedContent.columns.map((col) => dataObj[col] || '');
+                            rows.push(row);
+                        });
+                    } else {
+                        // If data is already an array of arrays, just add them
+                        rows.push(...parsedContent.data);
+                    }
+                }
+                worksheet = xlsx.utils.aoa_to_sheet(rows);
             } else {
                 // If the data is an array of objects, convert it directly
                 const dataArray = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
