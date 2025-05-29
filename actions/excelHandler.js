@@ -95,8 +95,9 @@ export function convertJsonToExcel(jsonContent) {
                         const dataArray = Array.isArray(sheetData) ? sheetData : [sheetData];
                         worksheet = xlsx.utils.json_to_sheet(dataArray);
                     }
-                    // Add the worksheet to the workbook with the sheet name
-                    xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+                    // Add the worksheet to the workbook with the sheet name prefixed with "helix-"
+                    const prefixedSheetName = `helix-${sheetName}`;
+                    xlsx.utils.book_append_sheet(workbook, worksheet, prefixedSheetName);
                 }
             });
         } else {
@@ -111,7 +112,7 @@ export function convertJsonToExcel(jsonContent) {
                 worksheet = xlsx.utils.json_to_sheet(dataArray);
             }
             // Add the worksheet to the workbook
-            xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+            xlsx.utils.book_append_sheet(workbook, worksheet, 'helix-default');
         }
         // Write to buffer
         const excelBuffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
