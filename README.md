@@ -1,7 +1,6 @@
-# Graybox Application
+# Graybox Application AIO
 
 Welcome to my Adobe I/O Application!
-
 
 ## Setup
 
