@@ -176,4 +176,3 @@ application:
           everyMinCopyDocxRule:
             trigger: everyMin
             action: copy-sched
-            
