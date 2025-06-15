@@ -22,7 +22,6 @@ import HelixUtils from '../helixUtils.js';
 
 async function main(params) {
     const logger = getAioLogger('find-fragments', params.LOG_LEVEL || 'info');
-    // Convert sourcePaths to array if it's a string
     const sourcePaths = strToArray(params.sourcePaths);
     if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
         return {
@@ -35,32 +34,25 @@ async function main(params) {
 
     const appConfig = new AppConfig(params);
     const helixUtils = new HelixUtils(appConfig);
-    const fragmentLinks = new Set();
-    const processedPaths = new Set(); // Tracking processed paths to avoid infinite loops
+    const processedPaths = new Set();
 
-    // Process all AEM URLs in parallel
     const aemPaths = sourcePaths.filter((path) => path.includes('aem.page'));
 
     const processPath = async (originalPath, isFragment = false) => {
-        // Create a copy of the path to avoid modifying the parameter
         let pathToProcess = originalPath;
 
-        // Skip if already processed to avoid infinite loops
         if (processedPaths.has(pathToProcess)) {
             return [];
         }
         processedPaths.add(pathToProcess);
 
-        // Fetch the markdown content
         const options = {};
-        // Passing isGraybox param true to fetch graybox Hlx Admin API Key
         const grayboxHlxAdminApiKey = helixUtils.getAdminApiKey(false);
         if (grayboxHlxAdminApiKey) {
             options.headers = new fetch.Headers();
             options.headers.append('Authorization', `token ${grayboxHlxAdminApiKey}`);
         }
 
-        // Add .md extension if not already present
         if (!pathToProcess.endsWith('.md')) {
             pathToProcess += '.md';
         }
@@ -74,44 +66,74 @@ async function main(params) {
         const fragmentMatches = content.match(/<https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*>/g) || [];
         const pathFragmentLinks = [];
 
-        fragmentMatches.forEach((match) => {
-            // Remove angle brackets to get the clean URL
+        const fragmentPromises = fragmentMatches.map(async (match) => {
             const cleanUrl = match.slice(1, -1);
-            pathFragmentLinks.push(cleanUrl);
+            try {
+                const fragmentResponse = await fetch(cleanUrl, options);
+                return {
+                    fragmentPath: cleanUrl,
+                    status: fragmentResponse.status,
+                    availability: fragmentResponse.status === 200 ? 'Available' : 'Missing'
+                };
+            } catch (error) {
+                return {
+                    fragmentPath: cleanUrl,
+                    status: 500,
+                    availability: 'Server Error'
+                };
+            }
         });
 
+        const fragmentResults = await Promise.all(fragmentPromises);
+        pathFragmentLinks.push(...fragmentResults);
+
         logger.info(`Found ${fragmentMatches.length} fragment links in ${originalPath}`);
-        // Recursively process each fragment found using Promise.all
-        const recursiveFragmentPromises = pathFragmentLinks.map(async (fragmentUrl) => {
+
+        const recursiveFragmentPromises = pathFragmentLinks.map(async (fragment) => {
             try {
-                return await processPath(fragmentUrl, true);
+                if (fragment.status === 200) {
+                    return await processPath(fragment.fragmentPath, true);
+                }
+                return [fragment];
             } catch (error) {
-                logger.error(`Error processing fragment ${fragmentUrl}: ${error.message}`);
-                return [];
+                logger.error(`Error processing fragment ${fragment.fragmentPath}: ${error.message}`);
+                return [{
+                    fragmentPath: fragment.fragmentPath,
+                    status: 500,
+                    availability: 'Server Error'
+                }];
             }
         });
 
         const recursiveResults = await Promise.all(recursiveFragmentPromises);
         const flattenedRecursiveResults = recursiveResults.flat();
 
-        // Return both current level fragments and nested fragments
         return [...pathFragmentLinks, ...flattenedRecursiveResults];
     };
 
-    // Process all AEM paths in parallel
+    // Processing all paths in parallel
     const results = await Promise.all(aemPaths.map((path) => processPath(path)));
 
-    // Add all found fragment links to the set
+    // Adding all found fragment links to the set with their status
+    const fragmentsWithStatus = [];
     results.forEach((pathLinks) => {
-        pathLinks.forEach((link) => fragmentLinks.add(link));
+        pathLinks.forEach((fragment) => {
+            if (!fragmentsWithStatus.some((f) => f.fragmentPath === fragment.fragmentPath)) {
+                fragmentsWithStatus.push(fragment);
+            }
+        });
     });
 
-    logger.info(`Found fragment links: ${Array.from(fragmentLinks).join(', ')}`);
+    logger.info(`Found fragments with status: ${JSON.stringify(fragmentsWithStatus)}`);
 
     return {
         statusCode: 200,
         body: {
-            fragmentLinks: Array.from(fragmentLinks)
+            fragmentLinks: fragmentsWithStatus.map((fragment) => ({
+                fragmentPath: fragment.fragmentPath,
+                status: fragment.status,
+                availability: fragment.status === 200 ? 'Available' : 'Missing'
+            }))
         }
     };
 }

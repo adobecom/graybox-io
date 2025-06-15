@@ -15,18 +15,16 @@
  * from Adobe.
  ************************************************************************* */
 
-import { getAioLogger, strToArray } from '../utils.js';
 import openwhisk from 'openwhisk';
+import { getAioLogger, strToArray } from '../utils.js';
+
+const logger = getAioLogger();
 
 async function main(params) {
-    // create a Logger
-    const logger = getAioLogger('bulk-copy', params.LOG_LEVEL || 'info');
     const ow = openwhisk();
     try {
         logger.info('Starting bulk copy operation');
-        // check for missing request input parameters
-        const requiredParams = ['sourcePaths'];
-
+        const requiredParams = ['sourcePaths', 'driveId', 'gbRootFolder', 'rootFolder', 'experienceName', 'projectExcelPath', 'adminPageUri', 'spToken'];
         const missingParams = requiredParams.filter(param => !params[param]);
         if (missingParams.length > 0) {
             return {
@@ -48,24 +46,24 @@ async function main(params) {
         }
 
         try {
-            // Process sourcePaths to extract the actual path from AEM URLs
             const processedSourcePaths = sourcePaths.map((path) => {
-                // Check if the path is an AEM URL
                 if (path.includes('aem.page')) {
-                    // Extract the path after aem.page
-                    const match = path.match(/aem\.page(\/.*?)(?:$|\s)/);
-                    if (match && match[1]) {
-                        // Add .docx extension if not present
-                        if (!match[1].includes('.')) {
+                    const regex = /aem\.page(\/.*?)(?:$|\s)|aem\.page\/(.*?)(?:\/[^/]+(?:\.\w+)?)?$/g;
+                    const matches = [...path.matchAll(regex)];
+                    if (matches.length > 0) {
+                        const fullPath = matches[0][1];
+                        if (fullPath) {
+                            if (!fullPath.includes('.')) {
+                                return {
+                                    sourcePath: `${fullPath}.docx`,
+                                    destinationPath: `/${params?.experienceName}${fullPath}.docx`
+                                };
+                            }
                             return {
-                                sourcePath: `${match[1]}.docx`,
-                                destinationPath: `/${params?.experienceName}${match[1]}.docx`
+                                sourcePath: fullPath,
+                                destinationPath: `/${params?.experienceName}${fullPath}`
                             };
                         }
-                        return {
-                            sourcePath: match[1],
-                            destinationPath: `/${params?.experienceName}${match[1]}`
-                        };
                     }
                 }
                 return {
@@ -74,30 +72,13 @@ async function main(params) {
                 };
             });
 
-            // Extract the destination folder structure from the first source path
-            let destinationSubPath = '';
-            if (processedSourcePaths.length > 0) {
-                const firstSourcePath = sourcePaths[0];
-                // Check if the path is an AEM URL
-                if (firstSourcePath.includes('aem.page')) {
-                    // Extract the path structure after the domain but before the filename
-                    const match = firstSourcePath.match(/aem\.page\/(.*?)(?:\/[^\/]+(?:\.\w+)?)?$/);
-                    if (match && match[1]) {
-                        destinationSubPath = `/${match[1]}`;
-                    }
-                }
-            }
-
-            // Form the complete destination path by combining gbRootFolder with the extracted subpath
-            const formattedDestinationPath = `/${params?.experienceName}${destinationSubPath}`;
             const workerResponse = await ow.actions.invoke({
                 name: 'graybox/bulk-copy-worker',
                 blocking: false,
                 result: false,
                 params: {
                     ...params,
-                    sourcePaths: processedSourcePaths,
-                    destinationPath: formattedDestinationPath
+                    sourcePaths: processedSourcePaths
                 }
             });
 
@@ -105,7 +86,6 @@ async function main(params) {
                 statusCode: 200,
                 body: {
                     pathDetails: processedSourcePaths,
-                    destinationFolder: formattedDestinationPath,
                     message: 'Bulk copy operation started',
                     activationId: workerResponse.activationId,
                 }
