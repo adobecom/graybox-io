@@ -21,11 +21,9 @@ import { delay, getAioLogger } from '../utils.js';
 import initFilesWrapper from './filesWrapper.js';
 import { toUTCStr } from '../utils.js';
 
-// main function that will be executed by the runtime
-export async function main(params) {
-    // create a Logger
-    const logger = getAioLogger('bulk-copy-worker', params.LOG_LEVEL || 'info');
-    logger.info(`Params in Bulk Copy Worker: ${JSON.stringify(params)}`);
+const logger = getAioLogger();
+async function main(params) {
+    logger.info('Graybox Bulk Copy Worker triggered');
     const appConfig = new AppConfig(params);
     const sharepoint = new Sharepoint(appConfig);
     const filesWrapper = await initFilesWrapper(logger);
@@ -40,16 +38,12 @@ export async function main(params) {
     try {
         logger.info('Starting bulk copy worker');
 
-        // initialize SharePoint
-
-        logger.info(`AppConfig in Bulk Copy Worker: ${JSON.stringify(appConfig)}`);
-
         // Initialize status file with empty object
         await filesWrapper.writeFile(`graybox_promote${project}/bulk-copy-status.json`, {
             statuses: []
         });
 
-        const { sourcePaths, destinationPath, options = {} } = params;
+        const { sourcePaths, destinationPath } = params;
         const results = {
             successful: [],
             failed: []
@@ -80,14 +74,10 @@ export async function main(params) {
         currentStatus.statuses.push(processingStatus);
         await filesWrapper.writeFile(`graybox_promote${project}/bulk-copy-status.json`, currentStatus);
 
-        logger.info(`Source paths in bulk copy worker: ${JSON.stringify(sourcePaths)}`);
-        logger.info(`Destination path in bulk copy worker: ${destinationPath}`);
-
         // Process each source path
         for (const pathInfo of sourcePaths) {
             try {
                 const { sourcePath, destinationPath: fileDestinationPath } = pathInfo;
-                logger.info(`Processing file: ${sourcePath}`); // /sabya/drafts/fragments/sabya-gb1-fragment
 
                 // Add file processing status
                 currentStatus = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-status.json`);
@@ -99,15 +89,16 @@ export async function main(params) {
                 await filesWrapper.writeFile(`graybox_promote${project}/bulk-copy-status.json`, currentStatus);
 
                 // Get file data from source
-                const { fileDownloadUrl, fileSize } = await sharepoint.getFileData(sourcePath, false);
-                logger.info(`File data in bulk copy worker: ${fileDownloadUrl}`);
-                logger.info(`File size in bulk copy worker: ${fileSize}`);
+                let sourcePathForFileData = sourcePath;
+                if (sourcePath.endsWith('.json')) {
+                    sourcePathForFileData = sourcePath.replace(/\.json$/, '.xlsx');
+                }
+                const { fileDownloadUrl, fileSize } = await sharepoint.getFileData(sourcePathForFileData, false);
 
                 if (!fileDownloadUrl) {
                     const errorMsg = `Failed to get file data for: ${sourcePath}`;
                     failedFiles.push({ path: sourcePath, error: errorMsg });
 
-                    // Write failed file to Excel immediately
                     try {
                         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS',
                             [[`Failed to copy file: ${sourcePath}`, toUTCStr(new Date()), errorMsg, '']]);
@@ -128,7 +119,7 @@ export async function main(params) {
                     // Write failed file to Excel immediately
                     try {
                         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS',
-                            [[`Failed to copy file: ${sourcePath}`, toUTCStr(new Date()), errorMsg, '']]);
+                            [[`Failed to download file: ${sourcePath}`, toUTCStr(new Date()), errorMsg, '']]);
                     } catch (excelError) {
                         logger.error(`Failed to update Excel for file ${sourcePath}: ${excelError.message}`);
                     }
@@ -137,16 +128,12 @@ export async function main(params) {
                 }
 
                 const fileName = sourcePath.split('/').pop();
-                logger.info(`Actual destination path coming as param in bulk copy worker: ${fileDestinationPath}`);
-                logger.info(`Actual source path coming as param in bulk copy worker: ${sourcePath}`);
-                logger.info(`Actual file name coming as param in bulk copy worker: ${fileName}`);
 
-                // Use the provided destination path
-                const destPath = fileDestinationPath;
-                logger.info(`Dest path thats is created in bulk copy worker: ${destPath}`);
-                logger.info(`Source path in bulk copy worker: ${sourcePath} and destination path: ${destPath}`);
-                logger.info(`File name in bulk copy worker: ${fileName}`);
-                logger.info(`Destination path in bulk copy worker: ${destPath}`);
+                // Use the provided destination path and handle json/xlsx extension
+                let destPath = fileDestinationPath;
+                if (destPath.endsWith('.json')) {
+                    destPath = destPath.replace(/\.json$/, '.xlsx');
+                }
 
                 // Add file saving status
                 currentStatus = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-status.json`);
@@ -160,7 +147,6 @@ export async function main(params) {
 
                 // Save the file to destination
                 const saveResult = await sharepoint.saveFileSimple(fileContent, destPath, true);
-                logger.info(`Save result in bulk copy worker: ${JSON.stringify(saveResult)}`);
                 if (!saveResult.success) {
                     const errorMsg = saveResult.errorMsg || `Failed to save file to: ${destPath}`;
                     failedFiles.push({ path: sourcePath, error: errorMsg });
@@ -293,3 +279,5 @@ export async function main(params) {
         };
     }
 }
+
+export { main };
