@@ -61,7 +61,7 @@ async function main(params) {
 
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
-    const { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint);
+    let { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint, draftsOnly);
     const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
     await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
 
@@ -69,6 +69,8 @@ async function main(params) {
     await filesWrapper.writeFile(`graybox_promote${project}/master_list.json`, gbFiles);
     const gbFilesMetadataObject = { sourceMetadata: gbFilesMetadata };
     await filesWrapper.writeFile(`graybox_promote${project}/master_list_metadata.json`, gbFilesMetadataObject);
+    gbFiles = []; // todo: remove this line
+    gbFilesMetadata = []; // todo: remove this line
     // Create Batch Status JSON
     const batchStatusJson = {};
 
@@ -150,13 +152,18 @@ async function main(params) {
     logger.info(`In Initiate Promote Worker, Project Queue Json: ${JSON.stringify(projectQueue)}`);
 
     // Create Project Status JSON
-    const projectStatusJson = { status: 'initiated', params: inputParams, statuses: [
-        {
-            stepName: 'initiated',
-            step: 'Found files to promote',
-            timestamp: toUTCStr(new Date()),
-            files: gbFiles
-        }] };
+    const projectStatusJson = {
+        status: 'initiated',
+        params: inputParams,
+        statuses: [
+            {
+                stepName: 'initiated',
+                step: 'Found files to promote',
+                timestamp: toUTCStr(new Date()),
+                files: gbFiles
+            }
+        ]
+    };
 
     // write to JSONs to AIO Files for Projects Queue and Project Status
     await filesWrapper.writeFile('graybox_promote/project_queue.json', projectQueue);
@@ -189,7 +196,7 @@ async function main(params) {
 /**
  * Find all files in the Graybox tree to promote.
  */
-async function findAllFiles(experienceName, appConfig, sharepoint) {
+async function findAllFiles(experienceName, appConfig, sharepoint, draftsOnly) {
     const sp = await appConfig.getSpConfig();
     const options = await sharepoint.getAuthorizedRequestOption({ method: 'GET' });
     const promoteIgnoreList = appConfig.getPromoteIgnorePaths();
@@ -198,10 +205,11 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
     return findAllGrayboxFiles({
         baseURI: sp.api.file.get.gbBaseURI,
         options,
-        gbFolders: appConfig.isDraftOnly() ? [`/${experienceName}/drafts`] : [''],
+        gbFolders: [''],
         promoteIgnoreList,
         experienceName,
-        sharepoint
+        sharepoint,
+        draftsOnly
     });
 }
 
@@ -209,13 +217,23 @@ async function findAllFiles(experienceName, appConfig, sharepoint) {
  * Iteratively finds all files under a specified root folder.
  */
 async function findAllGrayboxFiles({
-    baseURI, options, gbFolders, promoteIgnoreList, experienceName, sharepoint
+    baseURI, options, gbFolders, promoteIgnoreList, experienceName, sharepoint, draftsOnly
 }) {
     const gbRoot = baseURI.split(':').pop();
     // Regular expression to select the gbRoot and anything before it
     // Eg: the regex selects "https://<sharepoint-site>:/<app>-graybox"
     const pPathRegExp = new RegExp(`.*:${gbRoot}`);
-    const pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
+
+    // Create different regex patterns based on draftsOnly flag
+    let pathsToSelectRegExp;
+    if (draftsOnly) {
+        // Only match files inside the drafts folder of the experience
+        pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/drafts\\/.+$`);
+    } else {
+        // Match all files under the experience folder
+        pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
+    }
+    
     const gbFiles = [];
     const gbFilesMetadata = [];
     // gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
