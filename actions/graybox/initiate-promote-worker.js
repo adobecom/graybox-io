@@ -61,7 +61,7 @@ async function main(params) {
 
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
-    let { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint, draftsOnly);
+    const { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint, draftsOnly);
     const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
     await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
 
@@ -69,8 +69,8 @@ async function main(params) {
     await filesWrapper.writeFile(`graybox_promote${project}/master_list.json`, gbFiles);
     const gbFilesMetadataObject = { sourceMetadata: gbFilesMetadata };
     await filesWrapper.writeFile(`graybox_promote${project}/master_list_metadata.json`, gbFilesMetadataObject);
-    gbFiles = []; // todo: remove this line
-    gbFilesMetadata = []; // todo: remove this line
+    // gbFiles = []; // todo: remove this line
+    // gbFilesMetadata = []; // todo: remove this line
     // Create Batch Status JSON
     const batchStatusJson = {};
 
@@ -255,6 +255,7 @@ async function findAllGrayboxFiles({
                         // it is a folder
                         gbFolders.push(itemPath);
                     } else if (pathsToSelectRegExp.test(itemPath)) {
+                        logger.info(`Found file from experience folder ${experienceName} : ${itemPath}`);
                         const simplifiedMetadata = {
                             createdDateTime: item.createdDateTime,
                             lastModifiedDateTime: item.lastModifiedDateTime,
