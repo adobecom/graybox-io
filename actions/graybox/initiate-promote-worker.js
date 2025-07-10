@@ -39,8 +39,9 @@ async function main(params) {
 
     const appConfig = new AppConfig(params);
     const {
-        driveId, adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath, draftsOnly
+        driveId, adminPageUri, rootFolder, gbRootFolder, promoteIgnorePaths, experienceName, projectExcelPath
     } = appConfig.getPayload();
+    const draftsOnly = appConfig.isDraftOnly();
 
     const filesWrapper = await initFilesWrapper(logger);
     const sharepoint = new Sharepoint(appConfig);
@@ -62,6 +63,7 @@ async function main(params) {
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint, draftsOnly);
+    logger.info(`GB FILES ::: ${JSON.stringify(gbFiles)}`);
     const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
     await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
 
@@ -225,15 +227,20 @@ async function findAllGrayboxFiles({
     const pPathRegExp = new RegExp(`.*:${gbRoot}`);
 
     // Create different regex patterns based on draftsOnly flag
+    // Escape special regex characters in experience name
+    logger.info(`draftsOnly in findAllGrayboxFiles: ${draftsOnly}`);
+    const escapedExperienceName = experienceName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
     let pathsToSelectRegExp;
     if (draftsOnly) {
-        // Only match files inside the drafts folder of the experience
-        pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/drafts\\/.+$`);
+        // Only match files inside the drafts folder of the experience at any depth
+        pathsToSelectRegExp = new RegExp(`.*\\/${escapedExperienceName}\\/drafts\\/.+$`);
     } else {
-        // Match all files under the experience folder
-        pathsToSelectRegExp = new RegExp(`^\\/(?:langstore\\/[^/]+|[^/]+)?\\/?${experienceName}\\/.+$`);
+        // Match all files under the experience folder at any depth
+        pathsToSelectRegExp = new RegExp(`.*\\/${escapedExperienceName}\\/.+$`);
     }
-    
+
+    logger.info(`Experience name: ${experienceName}, Escaped: ${escapedExperienceName}, Regex: ${pathsToSelectRegExp}`);
+    logger.info(`DraftsOnly: ${draftsOnly}`);
     const gbFiles = [];
     const gbFilesMetadata = [];
     // gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
@@ -250,20 +257,27 @@ async function findAllGrayboxFiles({
             for (let di = 0; di < driveItems?.length; di += 1) {
                 const item = driveItems[di];
                 const itemPath = `${item.parentReference.path.replace(pPathRegExp, '')}/${item.name}`;
+                logger.info(`Processing item: ${item.name}, Parent path: ${item.parentReference.path}, Constructed path: ${itemPath}, Is folder: ${!!item.folder}`);
                 if (!isFilePatternMatched(itemPath, promoteIgnoreList)) {
                     if (item.folder) {
                         // it is a folder
+                        logger.info(`Adding folder to queue: ${itemPath}`);
                         gbFolders.push(itemPath);
-                    } else if (pathsToSelectRegExp.test(itemPath)) {
-                        logger.info(`Found file from experience folder ${experienceName} : ${itemPath}`);
-                        const simplifiedMetadata = {
-                            createdDateTime: item.createdDateTime,
-                            lastModifiedDateTime: item.lastModifiedDateTime,
-                            fullPath: itemPath,
-                            path: itemPath.replace(`/${experienceName}`, '')
-                        };
-                        gbFilesMetadata.push(simplifiedMetadata);
-                        gbFiles.push(itemPath);
+                    } else {
+                        logger.info(`Testing file path "${itemPath}" against regex ${pathsToSelectRegExp}`);
+                        if (pathsToSelectRegExp.test(itemPath)) {
+                            logger.info(`Found file from experience folder ${experienceName} : ${itemPath}`);
+                            const simplifiedMetadata = {
+                                createdDateTime: item.createdDateTime,
+                                lastModifiedDateTime: item.lastModifiedDateTime,
+                                fullPath: itemPath,
+                                path: itemPath.replace(`/${experienceName}`, '')
+                            };
+                            gbFilesMetadata.push(simplifiedMetadata);
+                            gbFiles.push(itemPath);
+                        } else {
+                            logger.info(`File path ${itemPath} does not match regex ${pathsToSelectRegExp}`);
+                        }
                     }
                 } else {
                     logger.info(`Ignored from promote: ${itemPath}`);
