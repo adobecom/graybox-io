@@ -63,7 +63,6 @@ async function main(params) {
     // Get all files in the graybox folder for the specific experience name
     // NOTE: This does not capture content inside the locale/expName folders yet
     const { gbFiles, gbFilesMetadata } = await findAllFiles(experienceName, appConfig, sharepoint, draftsOnly);
-    logger.info(`GB FILES ::: ${JSON.stringify(gbFiles)}`);
     const grayboxFilesToBePromoted = [['Graybox files to be promoted', toUTCStr(new Date()), '', JSON.stringify(gbFiles)]];
     await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', grayboxFilesToBePromoted);
 
@@ -71,8 +70,6 @@ async function main(params) {
     await filesWrapper.writeFile(`graybox_promote${project}/master_list.json`, gbFiles);
     const gbFilesMetadataObject = { sourceMetadata: gbFilesMetadata };
     await filesWrapper.writeFile(`graybox_promote${project}/master_list_metadata.json`, gbFilesMetadataObject);
-    // gbFiles = []; // todo: remove this line
-    // gbFilesMetadata = []; // todo: remove this line
     // Create Batch Status JSON
     const batchStatusJson = {};
 
@@ -228,7 +225,6 @@ async function findAllGrayboxFiles({
 
     // Create different regex patterns based on draftsOnly flag
     // Escape special regex characters in experience name
-    logger.info(`draftsOnly in findAllGrayboxFiles: ${draftsOnly}`);
     const escapedExperienceName = experienceName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
     let pathsToSelectRegExp;
     if (draftsOnly) {
@@ -239,8 +235,7 @@ async function findAllGrayboxFiles({
         pathsToSelectRegExp = new RegExp(`.*\\/${escapedExperienceName}\\/.+$`);
     }
 
-    logger.info(`Experience name: ${experienceName}, Escaped: ${escapedExperienceName}, Regex: ${pathsToSelectRegExp}`);
-    logger.info(`DraftsOnly: ${draftsOnly}`);
+    logger.info(`Experience name: ${experienceName}, DraftsOnly: ${draftsOnly}, Escaped: ${escapedExperienceName}, Regex: ${pathsToSelectRegExp}`);
     const gbFiles = [];
     const gbFilesMetadata = [];
     // gbFolders = ['/sabya']; // TODO: Used for quick debugging. Uncomment only during local testing.
@@ -263,23 +258,19 @@ async function findAllGrayboxFiles({
                         // it is a folder
                         logger.info(`Adding folder to queue: ${itemPath}`);
                         gbFolders.push(itemPath);
+                    } else if (pathsToSelectRegExp.test(itemPath)) {
+                        logger.info(`Found file from experience folder ${experienceName} : ${itemPath}`);
+                        const simplifiedMetadata = {
+                            createdDateTime: item.createdDateTime,
+                            lastModifiedDateTime: item.lastModifiedDateTime,
+                            fullPath: itemPath,
+                            path: itemPath.replace(`/${experienceName}`, '')
+                        };
+                        gbFilesMetadata.push(simplifiedMetadata);
+                        gbFiles.push(itemPath);
                     } else {
-                        logger.info(`Testing file path "${itemPath}" against regex ${pathsToSelectRegExp}`);
-                        if (pathsToSelectRegExp.test(itemPath)) {
-                            logger.info(`Found file from experience folder ${experienceName} : ${itemPath}`);
-                            const simplifiedMetadata = {
-                                createdDateTime: item.createdDateTime,
-                                lastModifiedDateTime: item.lastModifiedDateTime,
-                                fullPath: itemPath,
-                                path: itemPath.replace(`/${experienceName}`, '')
-                            };
-                            gbFilesMetadata.push(simplifiedMetadata);
-                            gbFiles.push(itemPath);
-                        } else {
-                            logger.info(`File path ${itemPath} does not match regex ${pathsToSelectRegExp}`);
-                        }
+                        logger.info(`File path ${itemPath} does not match regex ${pathsToSelectRegExp}`);
                     }
-                } else {
                     logger.info(`Ignored from promote: ${itemPath}`);
                 }
             }
