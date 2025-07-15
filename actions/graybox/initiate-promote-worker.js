@@ -47,7 +47,19 @@ async function main(params) {
     const sharepoint = new Sharepoint(appConfig);
     const project = `${gbRootFolder}/${experienceName}`;
 
-    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, {});
+    const projectStatusInitialJson = {
+        status: 'initiated',
+        statuses: [
+            {
+                stepName: 'initiated',
+                step: 'Initiated',
+                timestamp: toUTCStr(new Date()),
+                files: []
+            }
+        ]
+    };
+
+    await filesWrapper.writeFile(`graybox_promote${project}/status.json`, projectStatusInitialJson);
 
     try {
         // Update Promote Status
