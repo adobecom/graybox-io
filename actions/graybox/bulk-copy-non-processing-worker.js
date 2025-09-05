@@ -133,29 +133,46 @@ async function main(params) {
             logger.info(`Processing file: ${sourcePath} -> ${destinationPath}`);
 
             // Download the source file and save it to destination location
-            logger.info(`Getting file data for: ${sourcePath} (isGraybox: true)`);
-            const { fileDownloadUrl } = await sharepoint.getFileData(sourcePath, true);
-            logger.info(`File download URL: ${fileDownloadUrl ? 'PRESENT' : 'MISSING'}`);
+            // Source files are in the regular SharePoint location, not graybox location
+            logger.info(`Getting file data for: ${sourcePath} (isGraybox: false - source files are in regular SharePoint)`);
+            
+            // Handle .json to .xlsx conversion like the previous working version
+            let sourcePathForFileData = sourcePath;
+            if (sourcePath.endsWith('.json')) {
+                sourcePathForFileData = sourcePath.replace(/\.json$/, '.xlsx');
+                logger.info(`Converted .json to .xlsx for file data: ${sourcePathForFileData}`);
+            }
+            
+            const { fileDownloadUrl, fileSize } = await sharepoint.getFileData(sourcePathForFileData, false);
+            logger.info(`File download URL: ${fileDownloadUrl ? 'PRESENT' : 'MISSING'}, File size: ${fileSize || 'unknown'}`);
             
             if (!fileDownloadUrl) {
-                throw new Error(`No download URL returned for file: ${sourcePath}`);
+                throw new Error(`No download URL returned for file: ${sourcePathForFileData}`);
             }
             
             logger.info(`Downloading file from URL: ${fileDownloadUrl.substring(0, 100)}...`);
             const file = await sharepoint.getFileUsingDownloadUrl(fileDownloadUrl);
             logger.info(`File downloaded successfully, size: ${file ? file.size || 'unknown' : 'null'}`);
             
-            const saveStatus = await sharepoint.saveFileSimple(file, destinationPath);
+            // Handle destination path .json to .xlsx conversion like the previous working version
+            let destPath = destinationPath;
+            if (destPath.endsWith('.json')) {
+                destPath = destPath.replace(/\.json$/, '.xlsx');
+                logger.info(`Converted destination .json to .xlsx: ${destPath}`);
+            }
+            
+            // Save to graybox location (isGraybox: true for destination)
+            const saveStatus = await sharepoint.saveFileSimple(file, destPath, true);
 
             if (saveStatus?.success) {
-                copiedFiles.push(destinationPath);
-                logger.info(`Successfully copied: ${sourcePath} -> ${destinationPath}`);
+                copiedFiles.push(destPath);
+                logger.info(`Successfully copied: ${sourcePath} -> ${destPath}`);
             } else if (saveStatus?.errorMsg?.includes('File is locked')) {
-                failedCopies.push(`${destinationPath} (locked file)`);
-                logger.warn(`File locked: ${destinationPath}`);
+                failedCopies.push(`${destPath} (locked file)`);
+                logger.warn(`File locked: ${destPath}`);
             } else {
-                failedCopies.push(destinationPath);
-                logger.error(`Failed to copy: ${sourcePath} -> ${destinationPath}, Error: ${saveStatus?.errorMsg || 'Unknown error'}`);
+                failedCopies.push(destPath);
+                logger.error(`Failed to copy: ${sourcePath} -> ${destPath}, Error: ${saveStatus?.errorMsg || 'Unknown error'}`);
             }
         } catch (err) {
             const errorMsg = `Error processing file ${JSON.stringify(copyPathsEntry)}: ${err.message}`;
