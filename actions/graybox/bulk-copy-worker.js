@@ -137,8 +137,10 @@ async function main(params) {
                 for (const fragment of page.fragments) {
                     if (fragment.nestedFragments && fragment.nestedFragments.length > 0) {
                         // This fragment has nested fragments
+                        const fragmentSourcePath = convertFragmentUrlToSharePointPath(fragment.fragmentPath);
                         fragmentsWithNestedFragments.push({
                             fragmentPath: fragment.fragmentPath,
+                            sourcePath: fragmentSourcePath,
                             nestedFragmentCount: fragment.nestedFragments.length,
                             nestedFragments: fragment.nestedFragments,
                             sourcePage: page.sourcePath,
@@ -154,8 +156,10 @@ async function main(params) {
                                 
                                 if (nestedFragmentMatches.length > 0) {
                                     // This nested fragment has its own nested fragments
+                                    const nestedFragmentSourcePath = convertFragmentUrlToSharePointPath(nestedFragment.fragmentPath);
                                     fragmentsWithNestedFragments.push({
                                         fragmentPath: nestedFragment.fragmentPath,
+                                        sourcePath: nestedFragmentSourcePath,
                                         nestedFragmentCount: nestedFragmentMatches.length,
                                         nestedFragments: nestedFragmentMatches.map(match => ({
                                             fragmentPath: match.slice(1, -1),
@@ -167,8 +171,10 @@ async function main(params) {
                                     });
                                 } else {
                                     // This nested fragment has no nested fragments
+                                    const nestedFragmentSourcePath = convertFragmentUrlToSharePointPath(nestedFragment.fragmentPath);
                                     fragmentsWithoutNestedFragments.push({
                                         fragmentPath: nestedFragment.fragmentPath,
+                                        sourcePath: nestedFragmentSourcePath,
                                         nestedFragmentCount: 0,
                                         nestedFragments: [],
                                         sourcePage: page.sourcePath,
@@ -177,8 +183,10 @@ async function main(params) {
                                 }
                             } else {
                                 // Could not fetch content, assume no nested fragments
+                                const nestedFragmentSourcePath = convertFragmentUrlToSharePointPath(nestedFragment.fragmentPath);
                                 fragmentsWithoutNestedFragments.push({
                                     fragmentPath: nestedFragment.fragmentPath,
+                                    sourcePath: nestedFragmentSourcePath,
                                     nestedFragmentCount: 0,
                                     nestedFragments: [],
                                     sourcePage: page.sourcePath,
@@ -188,8 +196,10 @@ async function main(params) {
                         }
                     } else {
                         // This fragment has no nested fragments
+                        const fragmentSourcePath = convertFragmentUrlToSharePointPath(fragment.fragmentPath);
                         fragmentsWithoutNestedFragments.push({
                             fragmentPath: fragment.fragmentPath,
+                            sourcePath: fragmentSourcePath,
                             nestedFragmentCount: 0,
                             nestedFragments: [],
                             sourcePage: page.sourcePath,
@@ -428,6 +438,30 @@ async function main(params) {
             }
         };
     }
+}
+
+/**
+ * Convert AEM fragment URL to SharePoint path
+ * Similar to the logic in bulk-copy.js
+ */
+function convertFragmentUrlToSharePointPath(fragmentUrl) {
+    if (!fragmentUrl || !fragmentUrl.includes('aem.page')) {
+        return null;
+    }
+    
+    const regex = /aem\.page(\/.*?)(?:$|\s)|aem\.page\/(.*?)(?:\/[^/]+(?:\.\w+)?)?$/g;
+    const matches = [...fragmentUrl.matchAll(regex)];
+    if (matches.length > 0) {
+        const fullPath = matches[0][1] || matches[0][2];
+        if (fullPath) {
+            if (!fullPath.includes('.')) {
+                return `${fullPath}.docx`;
+            }
+            return fullPath;
+        }
+    }
+    
+    return null;
 }
 
 /**

@@ -99,11 +99,17 @@ async function main(params) {
                 sourcePath = copyPathsEntry.sourcePath;
                 destinationPath = copyPathsEntry.destinationPath;
             } else if (copyPathsEntry.sourcePath) {
-                // If it only has sourcePath, construct destinationPath
+                // If it has sourcePath, use it (this includes fragments with their own sourcePath)
                 sourcePath = copyPathsEntry.sourcePath;
                 destinationPath = `/${experienceName}${copyPathsEntry.sourcePath}`;
+                if (copyPathsEntry.fragmentPath) {
+                    logger.info(`Processing fragment with sourcePath: ${copyPathsEntry.type || 'unknown'} - copying fragment: ${sourcePath}`);
+                    logger.info(`  Fragment URL: ${copyPathsEntry.fragmentPath}`);
+                } else {
+                    logger.info(`Processing file with sourcePath: ${sourcePath}`);
+                }
             } else if (copyPathsEntry.sourcePage) {
-                // Handle fragment metadata format from bulk-copy-worker
+                // Handle legacy fragment metadata format from bulk-copy-worker (fallback)
                 // These entries have both fragmentPath (metadata) and sourcePage (actual file to copy)
                 // We only copy the sourcePage, the fragmentPath is just metadata about fragments found in that page
                 sourcePath = copyPathsEntry.sourcePage;
