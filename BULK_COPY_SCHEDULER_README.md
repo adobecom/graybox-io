@@ -154,7 +154,7 @@ everyMinBulkCopyRule:
 
 ## Testing
 
-A comprehensive test suite is available in `test/test-bulk-copy-scheduler.js`:
+A comprehensive test suite is available in `test/graybox/test-bulk-copy-scheduler.js`:
 
 - **Scheduler Tests**: Verify queue processing and worker invocation
 - **Worker Tests**: Verify file copying operations and error handling
@@ -172,19 +172,6 @@ A comprehensive test suite is available in `test/test-bulk-copy-scheduler.js`:
 - Performance metrics
 - Failure rate tracking
 
-## Integration Points
-
-### With Existing Systems
-- **SharePoint API**: For file operations
-- **Excel Integration**: For status tracking
-- **File System**: For batch and status management
-- **Promote System**: For project lifecycle management
-
-### Dependencies
-- `filesWrapper.js`: File system operations
-- `sharepoint.js`: SharePoint API operations
-- `statusUtils.js`: Status management utilities
-- `appConfig.js`: Configuration management
 
 ## Troubleshooting
 

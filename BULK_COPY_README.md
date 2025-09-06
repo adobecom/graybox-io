@@ -147,7 +147,7 @@ graybox_promote${project}/
 
 The bulk copy system now intelligently separates files into two distinct batch categories based on their processing requirements:
 
-#### **Processing Batches (High Priority)** 🔴
+#### **Processing Batches (High Priority)**
 - **Contents**: Files/pages/fragments that require additional processing
 - **Examples**:
   - Pages with fragments (require fragment discovery and copying)
@@ -155,21 +155,13 @@ The bulk copy system now intelligently separates files into two distinct batch c
 - **Processing**: Complex operations requiring fragment analysis, nested fragment discovery, and recursive copying
 - **Priority**: High - should be processed first due to complexity
 
-#### **Non-Processing Batches (Low Priority)** 🟢
+#### **Non-Processing Batches (Low Priority)**
 - **Contents**: Files/pages/fragments that can be copied directly
 - **Examples**:
   - Pages without fragments (simple copy operation)
   - Fragments without nested fragments (simple copy operation)
 - **Processing**: Direct copy operations without additional analysis
 - **Priority**: Low - can be processed in parallel or after processing batches
-
-#### **Benefits of Dual Batch System:**
-- ✅ **Clear Processing Separation**: Easy to identify which files need complex processing vs. simple copying
-- ✅ **Priority-Based Processing**: High priority batches can be processed first
-- ✅ **Resource Optimization**: Different processing strategies for different complexity levels
-- ✅ **Parallel Processing**: Non-processing batches can run in parallel with processing batches
-- ✅ **Better Scheduling**: Optimized workflow based on processing requirements
-- ✅ **Progress Tracking**: Clear visibility into different types of work being done
 
 ## Usage
 
@@ -239,11 +231,3 @@ The system automatically updates the project Excel file with:
 
 - `BATCH_REQUEST_BULK_COPY`: Number of files per batch (default: 200)
 - Batch size can be adjusted based on system performance requirements
-
-## Dependencies
-
-- `node-fetch`: For fetching AEM page content
-- `openwhisk`: For action invocation
-- `filesWrapper`: For file operations
-- `sharepoint`: For Excel updates and file operations
-- `validateAction`: For user permission validation
