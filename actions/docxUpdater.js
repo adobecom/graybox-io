@@ -148,6 +148,74 @@ function findFirstGtRowInNode(node) {
 }
 
 /**
+ * Check if the content contains any fragment paths
+ * @param {string} content - The content to check
+ * @returns {boolean} - True if content contains any fragment paths
+ */
+async function hasFragmentPathsInLink(content) {
+    // Find fragment links in content using angle bracket format
+    // Pattern matches: <https://...aem.page/.../fragments/...>
+    return content.match(/<https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*>/g) || [];
+}
+
+const addExperienceNameToFragmentLinks = (mdast, expName, helixUtils) => {
+    if (mdast) {
+        const mainRepo = helixUtils.getRepo(false);
+        const grayboxRepo = helixUtils.getRepo(true);
+
+        mdast.forEach((child) => {
+            if (child.type === 'gridTable') {
+                firstGtRows.push(findFirstGtRowInNode(child));
+            }
+            // Process fragment link URLs
+            if (child.type === 'link' && hasFragmentPathsInLink(child.url)) {
+                logger.info(`In addExperienceNameToFragmentLinks, child.url: ${child.url}`);
+                child.url = child.url.replaceAll(`/fragments/`, `/${expName}/fragments/`, '/').replaceAll(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                logger.info(`In addExperienceNameToFragmentLinks, child.url after replacement: ${child.url}`);
+            }
+
+            // Process link text content that contains fragment URLs
+            if (child.type === 'link' && child.children && hasFragmentPathsInLink(child.url)) {
+                child.children.forEach((textNode) => {
+                    if (textNode.type === 'text' && textNode.value &&
+                        (textNode.value.includes(`/fragments/`) && textNode.value.includes(`--${mainRepo}--`))) {
+                        textNode.value = textNode.value.replaceAll(`/fragments/`, `/${expName}/fragments/`).replaceAll(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                    }
+                });
+            }
+            if (child.children) {
+                addExperienceNameToFragmentLinks(child.children, expName, helixUtils);
+            }
+        });
+    }
+};
+
+async function updateDocumentForBulkCopy(content, expName, hlxAdminApiKey, helixUtils) {
+    firstGtRows = [];
+    let docx;
+    const state = { content: { data: content }, log: '' };
+    await parseMarkdown(state);
+    const { mdast } = state.content;
+    const mdastChildren = mdast.children;
+
+    logger.info(`In updateDocumentForBulkCopy, mdastChildren: ${JSON.stringify(mdastChildren)}`);
+    // Add Experience Name to Graybox Fragment Links
+    addExperienceNameToFragmentLinks(mdastChildren, expName, helixUtils);
+
+    try {
+        logger.info(`In updateDocumentForBulkCopy, before generating docx: ${JSON.stringify(mdast)}`);
+        // generated docx file from updated mdast
+        docx = await generateDocxFromMdast(mdast, hlxAdminApiKey);
+        logger.info(`Afterwards In generateDocxFromMdast, docx size: ${docx.length || docx.byteLength} bytes`);
+    } catch (err) {
+        // Mostly bad string ignored
+        logger.debug(`Error while generating docxfromdast ${err}`);
+    }
+
+    return docx;
+}
+
+/**
  * Checks if the given node is a graybox block.
  */
 const isGbBlock = (gtRowNode) => {
@@ -210,4 +278,5 @@ async function generateDocxFromMdast(mdast, hlxAdminApiKey) {
 
 export {
     updateDocument,
+    updateDocumentForBulkCopy,
 };
