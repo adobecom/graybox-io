@@ -106,8 +106,6 @@ async function main(params) {
 
             // Check if project already exists in queue
             const existingProjectIndex = bulkCopyProjectQueue.findIndex((p) => p.projectPath === projectPath);
-            
-            // Only store essential, non-sensitive information in the queue
             const queueEntry = {
                 projectPath,
                 status: 'initiated',
@@ -118,7 +116,7 @@ async function main(params) {
                 sourcePaths: processedSourcePaths,
                 totalSourcePaths: processedSourcePaths.length
             };
-            
+
             if (existingProjectIndex !== -1) {
                 // Update existing project entry
                 bulkCopyProjectQueue[existingProjectIndex] = queueEntry;
@@ -131,11 +129,9 @@ async function main(params) {
 
             await filesWrapper.writeFile(bulkCopyProjectQueuePath, bulkCopyProjectQueue);
 
-            // Explicitly pass all required parameters to ensure they reach the worker
             const workerParams = {
                 ...params,
                 sourcePaths: processedSourcePaths,
-                // Explicitly ensure these critical parameters are passed
                 driveId: params.driveId,
                 gbRootFolder: params.gbRootFolder,
                 rootFolder: params.rootFolder,
@@ -144,9 +140,6 @@ async function main(params) {
                 adminPageUri: params.adminPageUri,
                 spToken: params.spToken
             };
-            
-            logger.info(`Invoking bulk-copy-worker with params: ${JSON.stringify(Object.keys(workerParams))}`);
-            logger.info(`Worker will receive - adminPageUri: ${workerParams.adminPageUri ? 'PRESENT' : 'MISSING'}, spToken: ${workerParams.spToken ? 'PRESENT' : 'MISSING'}, driveId: ${workerParams.driveId || 'MISSING'}`);
 
             await ow.actions.invoke({
                 name: 'graybox/bulk-copy-worker',
