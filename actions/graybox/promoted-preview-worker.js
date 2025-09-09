@@ -21,6 +21,7 @@ import HelixUtils from '../helixUtils.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
 import { writeProjectStatus } from './statusUtils.js';
+import { updateBulkCopyStepStatus } from './bulkCopyStatusUtils.js';
 
 const logger = getAioLogger();
 
@@ -91,6 +92,15 @@ async function main(params) {
 
         logger.info(`In Promoted Preview Worker, Found ${allFilesToPreview.length} total files to preview (promoted + copied)`);
 
+        // Update step 5 status (preview started)
+        await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
+            status: 'in_progress',
+            startTime: toUTCStr(new Date()),
+            progress: {
+                total: allFilesToPreview.length
+            }
+        });
+
         // Update status to preview in progress
         const statusEntry = {
             step: 'Promoted and Copied Files Preview started',
@@ -120,6 +130,22 @@ async function main(params) {
             // Update with retry results
             await updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allFilesToPreview, retryStatuses, filesWrapper);
         }
+
+        // Update step 5 status (preview completed)
+        const finalFailedPreviews = previewStatuses.filter(status => !status.success);
+        await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
+            status: 'completed',
+            endTime: toUTCStr(new Date()),
+            progress: {
+                completed: previewStatuses.filter(s => s.success).length,
+                failed: finalFailedPreviews.length
+            },
+            details: {
+                previewedFiles: previewStatuses.filter(s => s.success).map(s => s.path),
+                failedFiles: finalFailedPreviews.map(s => s.path)
+            },
+            errors: finalFailedPreviews.map(s => s.errorMsg || 'Preview failed')
+        });
 
         // Update project status
         await updateProjectStatus(project, filesWrapper, previewStatuses);

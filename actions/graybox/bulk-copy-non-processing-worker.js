@@ -20,6 +20,7 @@ import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
 import { writeProjectStatus } from './statusUtils.js';
+import { updateBulkCopyStepStatus } from './bulkCopyStatusUtils.js';
 
 const logger = getAioLogger();
 
@@ -73,6 +74,15 @@ async function main(params) {
     const batchFile = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-batches/${batchName}.json`);
     
     logger.info(`In Bulk Copy Non-Processing Worker, Copy File Paths for project: ${project} for batchname ${batchName} of params: ${JSON.stringify(params)}: ${JSON.stringify(batchFile)}`);
+
+    // Update step 2 status (non-processing copy started)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step2_non_processing_copy', {
+        status: 'in_progress',
+        startTime: toUTCStr(new Date()),
+        progress: {
+            total: batchFile ? batchFile.length : 0
+        }
+    });
 
     // Update & Write the Batch Status to in progress "batch_status.json" file
     // So that the scheduler doesn't pick the same batch again
@@ -188,6 +198,21 @@ async function main(params) {
     }
 
     logger.info(`In Bulk Copy Non-Processing Worker, Copied files for project: ${project} for batchname ${batchName} no.of files ${copiedFiles.length}, files list: ${JSON.stringify(copiedFiles)}`);
+    
+    // Update step 2 status (non-processing copy completed)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step2_non_processing_copy', {
+        status: 'completed',
+        endTime: toUTCStr(new Date()),
+        progress: {
+            completed: copiedFiles.length,
+            failed: failedCopies.length
+        },
+        details: {
+            copiedFiles: copiedFiles,
+            failedFiles: failedCopies
+        },
+        errors: failedCopies
+    });
     
     // Update the Copied Files tracking for preview
     if (copiedFiles.length > 0) {

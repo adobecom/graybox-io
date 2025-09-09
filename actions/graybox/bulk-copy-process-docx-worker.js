@@ -24,6 +24,7 @@ import Sharepoint from '../sharepoint.js';
 import { updateDocumentForBulkCopy } from '../docxUpdater.js';
 import initFilesWrapper from './filesWrapper.js';
 import { writeProjectStatus } from './statusUtils.js';
+import { updateBulkCopyStepStatus } from './bulkCopyStatusUtils.js';
 
 const logger = getAioLogger();
 
@@ -78,6 +79,15 @@ async function main(params) {
     const batchFile = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-batches/${batchName}.json`);
 
     logger.info(`In Bulk Copy Process Content Worker, Processing File Paths for project: ${project} for batchname ${batchName} of params: ${JSON.stringify(params)}: ${JSON.stringify(batchFile)}`);
+
+    // Update step 3 status (DOCX processing started)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step3_docx_processing', {
+        status: 'in_progress',
+        startTime: toUTCStr(new Date()),
+        progress: {
+            total: batchFile ? batchFile.length : 0
+        }
+    });
 
     // Check if batch file exists and has content
     if (!batchFile || !Array.isArray(batchFile) || batchFile.length === 0) {
@@ -269,6 +279,22 @@ async function main(params) {
 
     logger.info(`In Bulk Copy Process Content Worker, Processed files for project: ${project} for batchname ${batchName} no.of files ${processedFiles.length}`);
     logger.info(`Files list: ${JSON.stringify(processedFiles)}`);
+
+    // Update step 3 status (DOCX processing completed)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step3_docx_processing', {
+        status: 'completed',
+        endTime: toUTCStr(new Date()),
+        progress: {
+            completed: processedFiles.length,
+            failed: failedProcesses.length
+        },
+        details: {
+            processedFiles: processedFiles,
+            failedFiles: failedProcesses,
+            transformedFragments: processedFiles.length // Assuming each processed file had fragments transformed
+        },
+        errors: failedProcesses
+    });
 
     // Update the Processed Paths in the current project's "processed_paths.json" file
     if (processedFiles.length > 0) {

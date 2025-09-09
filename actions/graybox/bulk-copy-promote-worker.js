@@ -20,6 +20,7 @@ import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
 import { writeProjectStatus } from './statusUtils.js';
+import { updateBulkCopyStepStatus } from './bulkCopyStatusUtils.js';
 
 const logger = getAioLogger();
 
@@ -38,6 +39,15 @@ async function main(params) {
     const filesToPromote = params.filesToPromote || [];
 
     logger.info(`In Bulk Copy Promote Worker, Promoting ${filesToPromote.length} files for project: ${project}`);
+
+    // Update step 4 status (promotion started)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step4_promotion', {
+        status: 'in_progress',
+        startTime: toUTCStr(new Date()),
+        progress: {
+            total: filesToPromote.length
+        }
+    });
 
     // Debug SharePoint configuration
     logger.info('In Bulk Copy Promote Worker, SharePoint configuration:');
@@ -125,6 +135,21 @@ async function main(params) {
     }
 
     logger.info(`In Bulk Copy Promote Worker, Promotion completed: ${promotes.length} successful, ${failedPromotes.length} failed`);
+
+    // Update step 4 status (promotion completed)
+    await updateBulkCopyStepStatus(filesWrapper, project, 'step4_promotion', {
+        status: 'completed',
+        endTime: toUTCStr(new Date()),
+        progress: {
+            completed: promotes.length,
+            failed: failedPromotes.length
+        },
+        details: {
+            promotedFiles: promotes,
+            failedFiles: failedPromotes
+        },
+        errors: failedPromotes
+    });
 
     // Update the Promoted Files tracking for preview
     if (promotes.length > 0) {

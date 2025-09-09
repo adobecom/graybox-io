@@ -22,6 +22,7 @@ import { getAioLogger, toUTCStr } from '../utils.js';
 import initFilesWrapper from './filesWrapper.js';
 import HelixUtils from '../helixUtils.js';
 import { writeProjectStatus } from './statusUtils.js';
+import { initializeBulkCopyStatus, updateBulkCopyStepStatus } from './bulkCopyStatusUtils.js';
 
 const logger = getAioLogger();
 const BATCH_REQUEST_BULK_COPY = 200;
@@ -69,12 +70,10 @@ async function main(params) {
     try {
         logger.info('Starting bulk copy worker with fragment discovery');
 
-        // Initialize bulk copy status
-        await filesWrapper.writeFile(`graybox_promote${project}/bulk-copy-status.json`, {
-            status: 'initiated',
-            timestamp: toUTCStr(new Date()),
-            statuses: []
-        });
+        // Initialize bulk copy status tracking
+        const bulkCopyStatus = initializeBulkCopyStatus(project, experienceName, sourcePaths.length);
+        await filesWrapper.writeFile(`graybox_promote${project}/bulk-copy-status.json`, bulkCopyStatus);
+        logger.info(`Initialized bulk copy status tracking for project: ${project}`);
 
         // Create inputParams exactly like initiate-promote-worker.js does
         const inputParams = {};
@@ -135,6 +134,8 @@ async function main(params) {
         // Separate files with and without fragments
         const filesWithFragments = processedPaths.filter(path => path.hasFragments);
         const filesWithoutFragments = processedPaths.filter(path => !path.hasFragments);
+        
+        logger.info(`File categorization: ${filesWithFragments.length} files with fragments, ${filesWithoutFragments.length} files without fragments`);
 
         // Also categorize individual fragments based on whether they have nested fragments
         const fragmentsWithNestedFragments = [];
@@ -289,6 +290,7 @@ async function main(params) {
         const processingBatchesArray = [];
         const processingWritePromises = [];
         
+        logger.info(`Creating processing batches for ${filesNeedingProcessing.length} files`);
         for (let i = 0, batchCounter = 1; i < filesNeedingProcessing.length; i += BATCH_REQUEST_BULK_COPY, batchCounter += 1) {
             const arrayChunk = filesNeedingProcessing.slice(i, i + BATCH_REQUEST_BULK_COPY);
             processingBatchesArray.push(arrayChunk);
@@ -304,6 +306,7 @@ async function main(params) {
         const nonProcessingBatchesArray = [];
         const nonProcessingWritePromises = [];
         
+        logger.info(`Creating non-processing batches for ${filesNotNeedingProcessing.length} files`);
         for (let i = 0, batchCounter = 1; i < filesNotNeedingProcessing.length; i += BATCH_REQUEST_BULK_COPY, batchCounter += 1) {
             const arrayChunk = filesNotNeedingProcessing.slice(i, i + BATCH_REQUEST_BULK_COPY);
             nonProcessingBatchesArray.push(arrayChunk);
@@ -320,6 +323,7 @@ async function main(params) {
         
         // Total batches created
         const totalBatches = processingBatchesArray.length + nonProcessingBatchesArray.length;
+        logger.info(`Total batches created: ${totalBatches} (${processingBatchesArray.length} processing + ${nonProcessingBatchesArray.length} non-processing)`);
 
         await Promise.all(writeBatchJsonPromises);
 
@@ -347,6 +351,9 @@ async function main(params) {
         // Update status files
         const finalStatus = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-status.json`);
         finalStatus.status = 'fragment_discovery_completed';
+        if (!finalStatus.statuses) {
+            finalStatus.statuses = [];
+        }
         finalStatus.statuses.push({
             status: 'fragment_discovery_completed',
             timestamp: toUTCStr(new Date()),
@@ -363,6 +370,9 @@ async function main(params) {
         // Also update the main project status.json file to reflect completion
         const mainProjectStatus = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
         mainProjectStatus.status = 'fragment_discovery_completed';
+        if (!mainProjectStatus.statuses) {
+            mainProjectStatus.statuses = [];
+        }
         mainProjectStatus.statuses.push({
             stepName: 'fragment_discovery_completed',
             step: 'Fragment discovery completed successfully',
@@ -412,6 +422,26 @@ async function main(params) {
         logger.info(`Consolidated data written to: consolidated-fragment-data.json`);
         logger.info(`Batch organization: ${processingBatchesArray.length} processing batches (high priority), ${nonProcessingBatchesArray.length} non-processing batches (low priority)`);
 
+        // Update step 1 status (discovery completed)
+        logger.info(`Updating step 1 status with totalBatches: ${totalBatches}, processingBatches: ${processingBatchesArray.length}, nonProcessingBatches: ${nonProcessingBatchesArray.length}`);
+        await updateBulkCopyStepStatus(filesWrapper, project, 'step1_discovery', {
+            status: 'completed',
+            endTime: toUTCStr(new Date()),
+            progress: {
+                total: processedPaths.length,
+                completed: processedPaths.length,
+                failed: 0
+            },
+            details: {
+                totalBatches: totalBatches,
+                processingBatches: processingBatchesArray.length,
+                nonProcessingBatches: nonProcessingBatchesArray.length,
+                totalFragments: filesWithFragments.length,
+                totalNestedFragments: fragmentsWithNestedFragments.length
+            }
+        });
+        logger.info(`Step 1 status update completed`);
+
         return {
             code: 200,
             body: {
@@ -431,6 +461,9 @@ async function main(params) {
         try {
             const errorStatus = await filesWrapper.readFileIntoObject(`graybox_promote${project}/bulk-copy-status.json`);
             errorStatus.status = 'error';
+            if (!errorStatus.statuses) {
+                errorStatus.statuses = [];
+            }
             errorStatus.statuses.push({
                 timestamp: toUTCStr(new Date()),
                 status: 'error',
