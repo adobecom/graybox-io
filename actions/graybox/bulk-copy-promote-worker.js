@@ -27,8 +27,6 @@ const logger = getAioLogger();
 async function main(params) {
     logger.info('Graybox Bulk Copy Promote Worker triggered');
 
-    logger.info(`Parameters received: ${JSON.stringify(params, null, 2)}`);
-
     const appConfig = new AppConfig(params);
     const { gbRootFolder, experienceName, projectExcelPath } = appConfig.getPayload();
 
@@ -40,7 +38,6 @@ async function main(params) {
 
     logger.info(`In Bulk Copy Promote Worker, Promoting ${filesToPromote.length} files for project: ${project}`);
 
-    // Update step 4 status (promotion started)
     await updateBulkCopyStepStatus(filesWrapper, project, 'step4_promotion', {
         status: 'in_progress',
         startTime: toUTCStr(new Date()),
@@ -48,13 +45,6 @@ async function main(params) {
             total: filesToPromote.length
         }
     });
-
-    // Debug SharePoint configuration
-    logger.info('In Bulk Copy Promote Worker, SharePoint configuration:');
-    logger.info(`- driveId: ${params.driveId || 'MISSING'}`);
-    logger.info(`- spToken: ${params.spToken ? 'PRESENT' : 'MISSING'}`);
-    logger.info(`- spSite: ${params.spSite || 'MISSING'}`);
-    logger.info(`- spClientId: ${params.spClientId || 'MISSING'}`);
 
     if (filesToPromote.length === 0) {
         logger.info('No files to promote');
@@ -79,7 +69,6 @@ async function main(params) {
     const promotes = [];
     const failedPromotes = [];
 
-    // Process files sequentially to avoid overwhelming the SharePoint API
     // eslint-disable-next-line no-restricted-syntax
     for (const fileToPromote of filesToPromote) {
         const {
@@ -87,7 +76,6 @@ async function main(params) {
         } = fileToPromote;
 
         try {
-            // Read the processed file from AIO storage
             const aioFilePath = `graybox_promote${project}/docx_bulk_copy/${experienceName}${sourcePath}`;
             logger.info(`In BulkCopyPromote-worker, reading processed file from AIO: ${aioFilePath}`);
             // eslint-disable-next-line no-await-in-loop
@@ -95,8 +83,6 @@ async function main(params) {
 
             if (processedFile) {
                 logger.info(`In BulkCopyPromote-worker, processedFile before save: ${sourcePath}, size: ${processedFile.length} bytes`);
-
-                // Save the processed file to SharePoint
                 logger.info(`In BulkCopyPromote-worker, saving to SharePoint: ${destinationPath}`);
                 logger.info(`In BulkCopyPromote-worker, file size: ${processedFile.length} bytes`);
                 logger.info(`In BulkCopyPromote-worker, file type: ${typeof processedFile}`);
@@ -136,7 +122,6 @@ async function main(params) {
 
     logger.info(`In Bulk Copy Promote Worker, Promotion completed: ${promotes.length} successful, ${failedPromotes.length} failed`);
 
-    // Update step 4 status (promotion completed)
     await updateBulkCopyStepStatus(filesWrapper, project, 'step4_promotion', {
         status: 'completed',
         endTime: toUTCStr(new Date()),
@@ -151,12 +136,10 @@ async function main(params) {
         errors: failedPromotes
     });
 
-    // Update the Promoted Files tracking for preview
     if (promotes.length > 0) {
         await updatePromotedFilesTracking(project, promotes, filesWrapper);
     }
 
-    // Update the Project Excel with the Promote Status
     try {
         const sFailedPromotes = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
 
@@ -173,7 +156,6 @@ async function main(params) {
         ]];
         await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', promoteExcelValues);
 
-        // Write status to status.json
         const statusJsonPath = `graybox_promote${project}/status.json`;
         const finalStatusEntry = {
             stepName: 'bulk_copy_promote_completed',
@@ -191,15 +173,12 @@ async function main(params) {
         logger.error(`Error occurred while updating Excel during Graybox Bulk Copy Promote: ${err}`);
     }
 
-    // Update project status based on results
     if (failedPromotes.length === 0) {
         // All files promoted successfully
         await updateProjectStatus(gbRootFolder, experienceName, filesWrapper, 'promoted');
     } else if (promotes.length > 0) {
-        // Some files promoted, some failed
         await updateProjectStatus(gbRootFolder, experienceName, filesWrapper, 'partially_promoted');
     } else {
-        // All files failed to promote
         await updateProjectStatus(gbRootFolder, experienceName, filesWrapper, 'promote_failed');
     }
 
@@ -219,7 +198,6 @@ async function main(params) {
  */
 async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper) {
     try {
-        // Read existing promoted files tracking
         const promotedFilesPath = `graybox_promote${project}/promoted_files_for_preview.json`;
         let promotedFilesJson = [];
         try {
@@ -228,11 +206,9 @@ async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper)
                 promotedFilesJson = existingData;
             }
         } catch (err) {
-            // File doesn't exist yet, start with empty array
             logger.info('Promoted files tracking file doesn\'t exist yet, creating new one');
         }
 
-        // Add new promoted files with timestamp
         const timestamp = toUTCStr(new Date());
         promotedFiles.forEach((filePath) => {
             promotedFilesJson.push({
@@ -243,7 +219,6 @@ async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper)
             });
         });
 
-        // Write updated promoted files tracking
         await filesWrapper.writeFile(promotedFilesPath, promotedFilesJson);
         logger.info(`Updated promoted files tracking with ${promotedFiles.length} new files`);
     } catch (err) {
@@ -261,7 +236,6 @@ async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper)
  */
 async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper, status) {
     const project = `${gbRootFolder}/${experienceName}`;
-    // Update the Project Status in the current project's "status.json" file
     const statusEntry = {
         step: `Bulk Copy Promote completed with status: ${status}`,
         stepName: status,
@@ -269,7 +243,6 @@ async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper, s
     };
     await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, status);
 
-    // Update the Project Status in the parent "bulk_copy_project_queue.json" file
     const projectQueueBulkCopy = await changeProjectStatusInQueue(filesWrapper, project, status);
     logger.info(`In promote-worker, for project: ${project} After Promotion, Project Queue Json: ${JSON.stringify(projectQueueBulkCopy)}`);
 }
@@ -278,7 +251,6 @@ async function changeProjectStatusInQueue(filesWrapper, project, toBeStatus) {
     const projectQueueBulkCopy = await filesWrapper.readFileIntoObject('graybox_promote/bulk_copy_project_queue.json');
     const index = projectQueueBulkCopy.findIndex((obj) => obj.projectPath === `${project}`);
     if (index !== -1) {
-        // Replace the object at the found index
         projectQueueBulkCopy[index].status = toBeStatus;
         await filesWrapper.writeFile('graybox_promote/bulk_copy_project_queue.json', projectQueueBulkCopy);
     }
