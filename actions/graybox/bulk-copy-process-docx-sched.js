@@ -42,7 +42,6 @@ async function main(params) {
                 bulkCopyProjectQueue = [];
             }
         } catch (queueError) {
-            // Queue file doesn't exist yet, which is normal when no bulk copy operations have been initiated
             logger.info('Bulk copy project queue file does not exist yet. No projects to process.');
             return {
                 code: 200,
@@ -50,7 +49,6 @@ async function main(params) {
             };
         }
 
-        // Ensure bulkCopyProjectQueue is an array before proceeding
         if (!Array.isArray(bulkCopyProjectQueue)) {
             logger.error(`bulkCopyProjectQueue is not an array: ${typeof bulkCopyProjectQueue}, value: ${JSON.stringify(bulkCopyProjectQueue)}`);
             bulkCopyProjectQueue = [];
@@ -130,21 +128,10 @@ async function main(params) {
                         logger.info(`Project status JSON for ${project}: ${JSON.stringify(projectStatusJson)}`);
 
                         if (projectStatusJson?.params && typeof projectStatusJson.params === 'object') {
-                            // Debug: Log the raw params from status file
-                            logger.info(`Raw params from status file: ${JSON.stringify(projectStatusJson.params)}`);
-
-                            // Use EXACTLY the same parameter copying approach as copy-sched.js
-                            // copy all params from json into the params object
                             const inputParams = projectStatusJson?.params;
                             Object.keys(inputParams).forEach((key) => {
                                 essentialParams[key] = inputParams[key];
                             });
-
-                            // Debug: Log what we extracted
-                            logger.info(`Extracted essential params: ${JSON.stringify(Object.keys(essentialParams))}`);
-                            logger.info(`adminPageUri: ${essentialParams.adminPageUri ? 'PRESENT' : 'MISSING'}`);
-                            logger.info(`spToken: ${essentialParams.spToken ? 'PRESENT' : 'MISSING'}`);
-                            logger.info(`driveId: ${essentialParams.driveId || 'MISSING'}`);
                         } else {
                             logger.warn(`No valid params found in project status for ${project}, worker may fail`);
                             logger.warn(`projectStatusJson.params: ${JSON.stringify(projectStatusJson?.params)}`);
@@ -153,8 +140,6 @@ async function main(params) {
                         logger.warn(`Could not read project status file for ${project}: ${statusErr.message}`);
                     }
 
-                    // Use EXACTLY the same parameter merging approach as copy-sched.js
-                    // copy all params from json into the params object
                     const projectParams = { ...params };
                     Object.keys(essentialParams).forEach((key) => {
                         projectParams[key] = essentialParams[key];
@@ -163,15 +148,6 @@ async function main(params) {
                     projectParams.project = project;
                     projectParams.batchName = initiatedBatchName;
 
-                    // Debug: Log what we're about to pass to the worker
-                    logger.info(`In Bulk Copy Process Content Sched, Invoking Bulk Copy Process Content Worker for Batch: ${initiatedBatchName} of Project: ${project}`);
-                    logger.info(`Parameters being passed to worker of project ${project} for batch ${initiatedBatchName}: ${JSON.stringify(Object.keys(projectParams))}`);
-                    logger.info(
-                        `Final merged params - of project ${project} for batch ${initiatedBatchName} ` +
-                        `adminPageUri: ${projectParams.adminPageUri || 'MISSING'}, ` +
-                        `spToken: ${projectParams.spToken ? 'PRESENT' : 'MISSING'}, ` +
-                        `driveId: ${projectParams.driveId || 'MISSING'}`
-                    );
                     try {
                         await ow.actions.invoke({
                             name: 'graybox/bulk-copy-process-docx-worker',
@@ -215,7 +191,6 @@ async function main(params) {
         responsePayload = err;
     }
 
-    // No errors while initiating all the Bulk Copy Process Content Worker Actions for all the projects
     return {
         code: 200,
         payload: responsePayload
