@@ -15,7 +15,7 @@
 * from Adobe.
 ************************************************************************* */
 
-import { getAioLogger, toUTCStr } from '../utils.js';
+import { getAioLogger, toUTCStr, handleExtension } from '../utils.js';
 import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
@@ -206,13 +206,20 @@ async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper)
                 promotedFilesJson = existingData;
             }
         } catch (err) {
-            logger.info('Promoted files tracking file doesn\'t exist yet, creating new one');
+            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                logger.info('Promoted files tracking file doesn\'t exist yet, creating new one');
+            } else {
+                logger.warn(`Error reading promoted files tracking file: ${err.message}, creating new one`);
+            }
         }
 
         const timestamp = toUTCStr(new Date());
         promotedFiles.forEach((filePath) => {
+            // Normalize the file path to match what the preview worker expects
+            const normalizedFilePath = handleExtension(filePath);
             promotedFilesJson.push({
-                filePath,
+                filePath: normalizedFilePath,
+                originalFilePath: filePath, // Keep the original path for reference
                 promotedAt: timestamp,
                 previewStatus: 'pending',
                 fileType: 'promoted'

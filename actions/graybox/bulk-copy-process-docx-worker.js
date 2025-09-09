@@ -276,7 +276,11 @@ async function main(params) {
                 processedPathsJson = {};
             }
         } catch (err) {
-            logger.info(`Processed paths file does not exist yet at ${processedPathsPath}, will create new one`);
+            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                logger.info(`Processed paths file does not exist yet at ${processedPathsPath}, will create new one`);
+            } else {
+                logger.warn(`Error reading processed paths file: ${err.message}, will create new one`);
+            }
             processedPathsJson = {};
         }
 

@@ -52,22 +52,38 @@ async function main(params) {
                     // Check for promoted files for preview
                     if (project.status === 'promoted' || project.status === 'partially_promoted') {
                         const promotedFilesPath = `graybox_promote${project.projectPath}/promoted_files_for_preview.json`;
-                        const promotedFiles = await filesWrapper.readFileIntoObject(promotedFilesPath);
-                        
-                        if (promotedFiles && Array.isArray(promotedFiles) && promotedFiles.length > 0) {
-                            const pendingPromotedFiles = promotedFiles.filter(file => file.previewStatus === 'pending');
-                            pendingFilesCount += pendingPromotedFiles.length;
+                        try {
+                            const promotedFiles = await filesWrapper.readFileIntoObject(promotedFilesPath);
+                            
+                            if (promotedFiles && Array.isArray(promotedFiles) && promotedFiles.length > 0) {
+                                const pendingPromotedFiles = promotedFiles.filter(file => file.previewStatus === 'pending');
+                                pendingFilesCount += pendingPromotedFiles.length;
+                            }
+                        } catch (err) {
+                            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                                logger.info(`Promoted files tracking file does not exist for project ${project.projectPath} - no promoted files to preview`);
+                            } else {
+                                logger.warn(`Error reading promoted files for project ${project.projectPath}: ${err.message}`);
+                            }
                         }
                     }
                     
                     // Check for copied files for preview
                     if (project.status === 'non_processing_batches_copied' || project.status === 'promoted' || project.status === 'partially_promoted') {
                         const copiedFilesPath = `graybox_promote${project.projectPath}/copied_files_for_preview.json`;
-                        const copiedFiles = await filesWrapper.readFileIntoObject(copiedFilesPath);
-                        
-                        if (copiedFiles && Array.isArray(copiedFiles) && copiedFiles.length > 0) {
-                            const pendingCopiedFiles = copiedFiles.filter(file => file.previewStatus === 'pending');
-                            pendingFilesCount += pendingCopiedFiles.length;
+                        try {
+                            const copiedFiles = await filesWrapper.readFileIntoObject(copiedFilesPath);
+                            
+                            if (copiedFiles && Array.isArray(copiedFiles) && copiedFiles.length > 0) {
+                                const pendingCopiedFiles = copiedFiles.filter(file => file.previewStatus === 'pending');
+                                pendingFilesCount += pendingCopiedFiles.length;
+                            }
+                        } catch (err) {
+                            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                                logger.info(`Copied files tracking file does not exist for project ${project.projectPath} - no copied files to preview`);
+                            } else {
+                                logger.warn(`Error reading copied files for project ${project.projectPath}: ${err.message}`);
+                            }
                         }
                     }
                     

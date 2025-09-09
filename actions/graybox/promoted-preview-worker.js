@@ -60,7 +60,11 @@ async function main(params) {
                 logger.info(`Found ${pendingPromotedFiles.length} promoted files pending preview`);
             }
         } catch (err) {
-            logger.warn(`Could not read promoted files for preview: ${err.message}`);
+            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                logger.info(`Promoted files tracking file does not exist yet at ${promotedFilesPath} - no promoted files to preview`);
+            } else {
+                logger.warn(`Could not read promoted files for preview: ${err.message}`);
+            }
         }
 
         try {
@@ -71,7 +75,11 @@ async function main(params) {
                 logger.info(`Found ${pendingCopiedFiles.length} copied files pending preview`);
             }
         } catch (err) {
-            logger.warn(`Could not read copied files for preview: ${err.message}`);
+            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                logger.info(`Copied files tracking file does not exist yet at ${copiedFilesPath} - no copied files to preview`);
+            } else {
+                logger.warn(`Could not read copied files for preview: ${err.message}`);
+            }
         }
 
         if (allFilesToPreview.length === 0) {
@@ -179,7 +187,7 @@ async function updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allF
             if (Array.isArray(allPromotedFiles)) {
                 previewStatuses.forEach((previewStatus) => {
                     const promotedFile = allPromotedFiles.find((file) => 
-                        handleExtension(file.filePath) === previewStatus.path && file.fileType === 'promoted'
+                        file.filePath === previewStatus.path && file.fileType === 'promoted'
                     );
                     if (promotedFile) {
                         promotedFile.previewStatus = previewStatus.success ? 'completed' : 'failed';

@@ -293,7 +293,11 @@ async function updateCopiedFilesTracking(project, copiedFiles, filesWrapper) {
                 copiedFilesJson = existingData;
             }
         } catch (err) {
-            logger.info('Copied files tracking file doesn\'t exist yet, creating new one');
+            if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
+                logger.info('Copied files tracking file doesn\'t exist yet, creating new one');
+            } else {
+                logger.warn(`Error reading copied files tracking file: ${err.message}, creating new one`);
+            }
         }
 
         const timestamp = toUTCStr(new Date());
