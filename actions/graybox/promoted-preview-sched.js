@@ -32,7 +32,7 @@ async function main(params) {
         // Read the bulk copy project queue to find projects that have been promoted
         const bulkCopyProjectQueue = await filesWrapper.readFileIntoObject('graybox_promote/bulk_copy_project_queue.json');
         logger.info(`From Promoted Preview Sched Bulk Copy Project Queue Json: ${JSON.stringify(bulkCopyProjectQueue)}`);
-        
+
         if (!bulkCopyProjectQueue || !Array.isArray(bulkCopyProjectQueue)) {
             responsePayload = 'No bulk copy projects in the queue';
             logger.info(responsePayload);
