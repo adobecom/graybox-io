@@ -18,9 +18,10 @@
 import { getAioLogger } from '../utils.js';
 import AppConfig from '../appConfig.js';
 import initFilesWrapper from './filesWrapper.js';
+import openwhisk from 'openwhisk';
 
 const logger = getAioLogger();
-
+const ow = openwhisk();
 async function main(params) {
     logger.info('Graybox Bulk Copy Promote Scheduler triggered');
 
@@ -117,8 +118,19 @@ async function main(params) {
 
     // Invoke the promote worker
     try {
-        const result = await appConfig.invokeAction('graybox/bulk-copy-promote-worker', projectParams);
-        logger.info(`In Bulk Copy Promote Sched, Worker invocation result: ${JSON.stringify(result)}`);
+        // const result = await appConfig.invokeAction('graybox/bulk-copy-promote-worker', projectParams);
+        try {
+            await ow.actions.invoke({
+                name: 'graybox/bulk-copy-promote-worker',
+                blocking: false,
+                result: false,
+                params: projectParams
+            });
+            return { project, status: 'triggered' };
+        } catch (err) {
+            logger.error(`Failed to invoke Bulk Copy Promote Worker for project ${project}: ${err}`);
+            return { project, status: 'failed', error: err.message };
+        }
     } catch (err) {
         logger.error(`In Bulk Copy Promote Sched, Error invoking worker: ${err.message}`);
         return exitAction({
@@ -126,13 +138,6 @@ async function main(params) {
             statusCode: 500
         });
     }
-
-    const responsePayload = `Bulk Copy Promote Scheduler completed for project ${project}`;
-    logger.info(responsePayload);
-    return exitAction({
-        body: responsePayload,
-        statusCode: 200
-    });
 }
 
 function exitAction(resp) {
