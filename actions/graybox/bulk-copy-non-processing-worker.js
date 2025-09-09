@@ -189,6 +189,11 @@ async function main(params) {
 
     logger.info(`In Bulk Copy Non-Processing Worker, Copied files for project: ${project} for batchname ${batchName} no.of files ${copiedFiles.length}, files list: ${JSON.stringify(copiedFiles)}`);
     
+    // Update the Copied Files tracking for preview
+    if (copiedFiles.length > 0) {
+        await updateCopiedFilesTracking(project, copiedFiles, filesWrapper);
+    }
+    
     // Update the Copied Paths in the current project's "copied_paths.json" file
     if (copiedFiles.length > 0) {
         let copiedPathsJson = {};
@@ -307,6 +312,47 @@ async function main(params) {
         body: responsePayload,
         statusCode: 200
     });
+}
+
+/**
+ * Update the Copied Files tracking for preview
+ * @param {*} project project path
+ * @param {*} copiedFiles array of copied file paths
+ * @param {*} filesWrapper filesWrapper object
+ */
+async function updateCopiedFilesTracking(project, copiedFiles, filesWrapper) {
+    try {
+        // Read existing copied files tracking
+        const copiedFilesPath = `graybox_promote${project}/copied_files_for_preview.json`;
+        let copiedFilesJson = [];
+        
+        try {
+            const existingData = await filesWrapper.readFileIntoObject(copiedFilesPath);
+            if (Array.isArray(existingData)) {
+                copiedFilesJson = existingData;
+            }
+        } catch (err) {
+            // File doesn't exist yet, start with empty array
+            logger.info('Copied files tracking file doesn\'t exist yet, creating new one');
+        }
+
+        // Add new copied files with timestamp
+        const timestamp = toUTCStr(new Date());
+        copiedFiles.forEach((filePath) => {
+            copiedFilesJson.push({
+                filePath,
+                copiedAt: timestamp,
+                previewStatus: 'pending',
+                fileType: 'non_processing'
+            });
+        });
+
+        // Write updated copied files tracking
+        await filesWrapper.writeFile(copiedFilesPath, copiedFilesJson);
+        logger.info(`Updated copied files tracking with ${copiedFiles.length} new files`);
+    } catch (err) {
+        logger.error(`Error updating copied files tracking: ${err.message}`);
+    }
 }
 
 /**

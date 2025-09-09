@@ -40,7 +40,7 @@ async function main(params) {
     logger.info(`In Bulk Copy Promote Worker, Promoting ${filesToPromote.length} files for project: ${project}`);
 
     // Debug SharePoint configuration
-    logger.info(`In Bulk Copy Promote Worker, SharePoint configuration:`);
+    logger.info('In Bulk Copy Promote Worker, SharePoint configuration:');
     logger.info(`- driveId: ${params.driveId || 'MISSING'}`);
     logger.info(`- spToken: ${params.spToken ? 'PRESENT' : 'MISSING'}`);
     logger.info(`- spSite: ${params.spSite || 'MISSING'}`);
@@ -126,6 +126,11 @@ async function main(params) {
 
     logger.info(`In Bulk Copy Promote Worker, Promotion completed: ${promotes.length} successful, ${failedPromotes.length} failed`);
 
+    // Update the Promoted Files tracking for preview
+    if (promotes.length > 0) {
+        await updatePromotedFilesTracking(project, promotes, filesWrapper);
+    }
+
     // Update the Project Excel with the Promote Status
     try {
         const sFailedPromotes = failedPromotes.length > 0 ? `Failed Promotes: \n${failedPromotes.join('\n')}` : '';
@@ -182,6 +187,46 @@ async function main(params) {
 }
 
 /**
+ * Update the Promoted Files tracking for preview
+ * @param {*} project project path
+ * @param {*} promotedFiles array of promoted file paths
+ * @param {*} filesWrapper filesWrapper object
+ */
+async function updatePromotedFilesTracking(project, promotedFiles, filesWrapper) {
+    try {
+        // Read existing promoted files tracking
+        const promotedFilesPath = `graybox_promote${project}/promoted_files_for_preview.json`;
+        let promotedFilesJson = [];
+        try {
+            const existingData = await filesWrapper.readFileIntoObject(promotedFilesPath);
+            if (Array.isArray(existingData)) {
+                promotedFilesJson = existingData;
+            }
+        } catch (err) {
+            // File doesn't exist yet, start with empty array
+            logger.info('Promoted files tracking file doesn\'t exist yet, creating new one');
+        }
+
+        // Add new promoted files with timestamp
+        const timestamp = toUTCStr(new Date());
+        promotedFiles.forEach((filePath) => {
+            promotedFilesJson.push({
+                filePath,
+                promotedAt: timestamp,
+                previewStatus: 'pending',
+                fileType: 'promoted'
+            });
+        });
+
+        // Write updated promoted files tracking
+        await filesWrapper.writeFile(promotedFilesPath, promotedFilesJson);
+        logger.info(`Updated promoted files tracking with ${promotedFiles.length} new files`);
+    } catch (err) {
+        logger.error(`Error updating promoted files tracking: ${err.message}`);
+    }
+}
+
+/**
  * Update the Project Status in the current project's "status.json" file & the parent "bulk_copy_project_queue.json" file
  * @param {*} gbRootFolder graybox root folder
  * @param {*} experienceName graybox experience name
@@ -191,7 +236,6 @@ async function main(params) {
  */
 async function updateProjectStatus(gbRootFolder, experienceName, filesWrapper, status) {
     const project = `${gbRootFolder}/${experienceName}`;
-    
     // Update the Project Status in the current project's "status.json" file
     const statusEntry = {
         step: `Bulk Copy Promote completed with status: ${status}`,

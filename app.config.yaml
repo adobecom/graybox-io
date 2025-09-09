@@ -221,6 +221,27 @@ application:
             limits:
               timeout: 3600000
               memorySize: 2048
+          promoted-preview-sched:
+            function: actions/graybox/promoted-preview-sched.js
+            web: 'no'
+            runtime: 'nodejs:18'
+            inputs:
+              LOG_LEVEL: debug
+            limits:
+              timeout: 900000
+              memorySize: 2048
+            annotations:
+              require-adobe-auth: false
+              final: true
+          promoted-preview-worker:
+            function: actions/graybox/promoted-preview-worker.js
+            web: 'no'
+            runtime: 'nodejs:18'
+            inputs:
+              LOG_LEVEL: debug
+            limits:
+              timeout: 3600000
+              memorySize: 2048
         triggers:
           everyMin:
             feed: /whisk.system/alarms/interval
@@ -248,3 +269,6 @@ application:
           everyMinBulkCopyPromoteRule:
             trigger: everyMin
             action: bulk-copy-promote-sched
+          everyMinPromotedPreviewRule:
+            trigger: everyMin
+            action: promoted-preview-sched
