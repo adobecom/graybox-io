@@ -17,7 +17,6 @@
 
 import openwhisk from 'openwhisk';
 import { getAioLogger } from '../utils.js';
-// import AppConfig from '../appConfig'; // Not used in current implementation
 import initFilesWrapper from './filesWrapper.js';
 
 async function main() {
@@ -25,10 +24,8 @@ async function main() {
     const ow = openwhisk();
     logger.info('Graybox Bulk Copy Promote Scheduler triggered');
 
-    // const appConfig = new AppConfig(params); // Not used in current implementation
     const filesWrapper = await initFilesWrapper(logger);
 
-    // Read the Project Queue in the parent "bulk_copy_project_queue.json" file
     const projectQueueBulkCopy = await filesWrapper.readFileIntoObject('graybox_promote/bulk_copy_project_queue.json');
     logger.info(`In Bulk Copy Promote Sched, Project Queue Json: ${JSON.stringify(projectQueueBulkCopy)}`);
 
@@ -93,10 +90,6 @@ async function main() {
             Object.keys(inputParams).forEach((key) => {
                 essentialParams[key] = inputParams[key];
             });
-            logger.info(`Extracted essential params: ${JSON.stringify(Object.keys(essentialParams))}`);
-            logger.info(`adminPageUri: ${essentialParams.adminPageUri ? 'PRESENT' : 'MISSING'}`);
-            logger.info(`spToken: ${essentialParams.spToken ? 'PRESENT' : 'MISSING'}`);
-            logger.info(`driveId: ${essentialParams.driveId || 'MISSING'}`);
         } else {
             logger.warn(`No valid params found in project status for ${project}, worker may fail`);
             logger.warn(`projectStatusJson.params: ${JSON.stringify(projectStatusJson?.params)}`);
@@ -116,9 +109,7 @@ async function main() {
 
     logger.info(`In Bulk Copy Promote Sched, Invoking worker for project: ${project} with ${allProcessedFiles.length} files`);
 
-    // Invoke the promote worker
     try {
-        // const result = await appConfig.invokeAction('graybox/bulk-copy-promote-worker', projectParams);
         try {
             await ow.actions.invoke({
                 name: 'graybox/bulk-copy-promote-worker',
