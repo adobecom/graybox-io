@@ -38,27 +38,21 @@ async function main(params) {
 
     const project = params.project || `${gbRootFolder}/${experienceName}`;
 
-    // Read the Project Status in the current project's "status.json" file
-    const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
-
-    if (helixUtils.canBulkPreview(false)) { // Use main content tree for promoted files
+    if (helixUtils.canBulkPreview(false)) {
         logger.info('In Promoted Preview Worker, Bulk Previewing promoted and copied files');
-        
+
         try {
-            // Update Excel with preview start status
             const excelValues = [[`Promoted and Copied Files Preview started for '${experienceName}' experience`, toUTCStr(new Date()), '', '']];
             await sharepoint.updateExcelTable(projectExcelPath, 'PROMOTE_STATUS', excelValues);
         } catch (err) {
             logger.error(`Error occurred while updating Excel before starting Promoted Preview: ${err}`);
         }
 
-        // Read promoted and copied files for preview
         const promotedFilesPath = `graybox_promote${project}/promoted_files_for_preview.json`;
         const copiedFilesPath = `graybox_promote${project}/copied_files_for_preview.json`;
         let allFilesToPreview = [];
-        
+
         try {
-            // Read promoted files
             const promotedFilesData = await filesWrapper.readFileIntoObject(promotedFilesPath);
             if (Array.isArray(promotedFilesData)) {
                 const pendingPromotedFiles = promotedFilesData.filter(file => file.previewStatus === 'pending');
@@ -68,12 +62,11 @@ async function main(params) {
         } catch (err) {
             logger.warn(`Could not read promoted files for preview: ${err.message}`);
         }
-        
+
         try {
-            // Read copied files
             const copiedFilesData = await filesWrapper.readFileIntoObject(copiedFilesPath);
             if (Array.isArray(copiedFilesData)) {
-                const pendingCopiedFiles = copiedFilesData.filter(file => file.previewStatus === 'pending');
+                const pendingCopiedFiles = copiedFilesData.filter((file) => file.previewStatus === 'pending');
                 allFilesToPreview = allFilesToPreview.concat(pendingCopiedFiles);
                 logger.info(`Found ${pendingCopiedFiles.length} copied files pending preview`);
             }
@@ -92,7 +85,6 @@ async function main(params) {
 
         logger.info(`In Promoted Preview Worker, Found ${allFilesToPreview.length} total files to preview (promoted + copied)`);
 
-        // Update step 5 status (preview started)
         await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
             status: 'in_progress',
             startTime: toUTCStr(new Date()),
@@ -101,7 +93,6 @@ async function main(params) {
             }
         });
 
-        // Update status to preview in progress
         const statusEntry = {
             step: 'Promoted and Copied Files Preview started',
             stepName: 'promoted_preview_in_progress',
@@ -109,52 +100,41 @@ async function main(params) {
         };
         await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, 'promoted_preview_in_progress');
 
-        // Prepare files for preview
         const paths = allFilesToPreview.map(file => handleExtension(file.filePath));
-        
-        // Perform bulk preview
         const previewStatuses = await helixUtils.bulkPreview(paths, helixUtils.getOperations().PREVIEW, experienceName, true);
-        
         logger.info(`In Promoted Preview Worker, Preview completed for ${previewStatuses.length} files`);
 
-        // Update files tracking with preview results
         await updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allFilesToPreview, previewStatuses, filesWrapper);
 
-        // Retry failed previews
         const failedPreviews = previewStatuses.filter(status => !status.success);
         if (failedPreviews.length > 0) {
             logger.info(`Retrying ${failedPreviews.length} failed previews`);
             const retryPaths = failedPreviews.map(status => status.path);
             const retryStatuses = await helixUtils.bulkPreview(retryPaths, helixUtils.getOperations().PREVIEW, experienceName, true);
-            
-            // Update with retry results
             await updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allFilesToPreview, retryStatuses, filesWrapper);
         }
 
-        // Update step 5 status (preview completed)
-        const finalFailedPreviews = previewStatuses.filter(status => !status.success);
+        const finalFailedPreviews = previewStatuses.filter((status) => !status.success);
         await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
             status: 'completed',
             endTime: toUTCStr(new Date()),
             progress: {
-                completed: previewStatuses.filter(s => s.success).length,
+                completed: previewStatuses.filter((s) => s.success).length,
                 failed: finalFailedPreviews.length
             },
             details: {
-                previewedFiles: previewStatuses.filter(s => s.success).map(s => s.path),
-                failedFiles: finalFailedPreviews.map(s => s.path)
+                previewedFiles: previewStatuses.filter((s) => s.success).map((s) => s.path),
+                failedFiles: finalFailedPreviews.map((s) => s.path)
             },
-            errors: finalFailedPreviews.map(s => s.errorMsg || 'Preview failed')
+            errors: finalFailedPreviews.map((s) => s.errorMsg || 'Preview failed')
         });
 
-        // Update project status
         await updateProjectStatus(project, filesWrapper, previewStatuses);
 
-        // Update Excel with completion status
         try {
-            const finalFailedPreviews = previewStatuses.filter(status => !status.success);
+            const finalFailedPreviews = previewStatuses.filter((status) => !status.success);
             const sFailedPreviews = finalFailedPreviews.length > 0 ? 
-                `Failed Previews: \n${finalFailedPreviews.map(f => f.path).join('\n')}` : '';
+                `Failed Previews: \n${finalFailedPreviews.map((f) => f.path).join('\n')}` : '';
             
             const excelValues = [[
                 `Promoted and Copied Files Preview completed for '${experienceName}' experience`,
@@ -162,7 +142,7 @@ async function main(params) {
                 sFailedPreviews,
                 JSON.stringify({
                     total: previewStatuses.length,
-                    successful: previewStatuses.filter(s => s.success).length,
+                    successful: previewStatuses.filter((s) => s.success).length,
                     failed: finalFailedPreviews.length
                 })
             ]];
@@ -170,13 +150,13 @@ async function main(params) {
         } catch (err) {
             logger.error(`Error occurred while updating Excel during Promoted Preview: ${err}`);
         }
-
+        // eslint-disable-next-line max-len
         responsePayload = `Promoted Preview Worker completed. Total: ${previewStatuses.length}, Successful: ${previewStatuses.filter(s => s.success).length}, Failed: ${previewStatuses.filter(s => !s.success).length}`;
     } else {
         responsePayload = 'Bulk Preview not enabled for Main Content Tree';
         logger.error(responsePayload);
     }
-    
+
     logger.info(responsePayload);
     return exitAction({
         body: responsePayload,
@@ -194,12 +174,11 @@ async function main(params) {
  */
 async function updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allFilesToPreview, previewStatuses, filesWrapper) {
     try {
-        // Update promoted files tracking
         try {
             const allPromotedFiles = await filesWrapper.readFileIntoObject(promotedFilesPath);
             if (Array.isArray(allPromotedFiles)) {
-                previewStatuses.forEach(previewStatus => {
-                    const promotedFile = allPromotedFiles.find(file => 
+                previewStatuses.forEach((previewStatus) => {
+                    const promotedFile = allPromotedFiles.find((file) => 
                         handleExtension(file.filePath) === previewStatus.path && file.fileType === 'promoted'
                     );
                     if (promotedFile) {
@@ -213,18 +192,17 @@ async function updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allF
                     }
                 });
                 await filesWrapper.writeFile(promotedFilesPath, allPromotedFiles);
-                logger.info(`Updated promoted files preview status`);
+                logger.info('Updated promoted files preview status');
             }
         } catch (err) {
             logger.warn(`Could not update promoted files preview status: ${err.message}`);
         }
-        
-        // Update copied files tracking
+
         try {
             const allCopiedFiles = await filesWrapper.readFileIntoObject(copiedFilesPath);
             if (Array.isArray(allCopiedFiles)) {
-                previewStatuses.forEach(previewStatus => {
-                    const copiedFile = allCopiedFiles.find(file => 
+                previewStatuses.forEach((previewStatus) => {
+                    const copiedFile = allCopiedFiles.find((file) => 
                         handleExtension(file.filePath) === previewStatus.path && file.fileType === 'non_processing'
                     );
                     if (copiedFile) {
@@ -238,12 +216,12 @@ async function updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allF
                     }
                 });
                 await filesWrapper.writeFile(copiedFilesPath, allCopiedFiles);
-                logger.info(`Updated copied files preview status`);
+                logger.info('Updated copied files preview status');
             }
         } catch (err) {
             logger.warn(`Could not update copied files preview status: ${err.message}`);
         }
-        
+
         logger.info(`Updated files preview status for ${previewStatuses.length} files`);
     } catch (err) {
         logger.error(`Error updating files preview status: ${err.message}`);
@@ -257,23 +235,20 @@ async function updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allF
  * @param {*} previewStatuses array of preview statuses
  */
 async function updateProjectStatus(project, filesWrapper, previewStatuses) {
-    const projectStatusJson = await filesWrapper.readFileIntoObject(`graybox_promote${project}/status.json`);
-
-    const failedPreviews = previewStatuses.filter(status => !status.success);
+    const failedPreviews = previewStatuses.filter((status) => !status.success);
     const statusEntry = {
         step: 'Promoted and Copied Files Preview Completed',
         stepName: 'promoted_preview_completed',
-        files: previewStatuses.map(s => s.path),
-        failures: failedPreviews.length > 0 ? `Failed Previews: \n${failedPreviews.map(f => f.path).join('\n')}` : '',
+        files: previewStatuses.map((s) => s.path),
+        failures: failedPreviews.length > 0 ? `Failed Previews: \n${failedPreviews.map((f) => f.path).join('\n')}` : '',
         summary: {
             total: previewStatuses.length,
-            successful: previewStatuses.filter(s => s.success).length,
+            successful: previewStatuses.filter((s) => s.success).length,
             failed: failedPreviews.length
         }
     };
-    
     await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, 'promoted_preview_completed');
-    logger.info(`Updated project status to promoted_preview_completed`);
+    logger.info('Updated project status to promoted_preview_completed');
 }
 
 function exitAction(resp) {
