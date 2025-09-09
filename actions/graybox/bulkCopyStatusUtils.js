@@ -15,7 +15,9 @@
 * from Adobe.
 ************************************************************************* */
 
-import { toUTCStr } from '../utils.js';
+import { toUTCStr, getAioLogger } from '../utils.js';
+
+const logger = getAioLogger();
 
 /**
  * Initialize bulk copy status structure
@@ -137,19 +139,18 @@ export function initializeBulkCopyStatus(project, experienceName, totalSourcePat
  */
 export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, updates) {
     try {
-        console.log(`Updating bulk copy step status for project: ${project}, step: ${stepKey}, updates: ${JSON.stringify(updates)}`);
+        logger.info(`Updating bulk copy step status for project: ${project}, step: ${stepKey}, updates: ${JSON.stringify(updates)}`);
         const statusPath = `graybox_promote${project}/bulk-copy-status.json`;
         let status = {};
-        
         try {
             const existingStatus = await filesWrapper.readFileIntoObject(statusPath);
             if (existingStatus && typeof existingStatus === 'object') {
                 status = existingStatus;
-                console.log(`Loaded existing status file for project ${project}`);
+                logger.info(`Loaded existing status file for project ${project}`);
             }
         } catch (err) {
             // File doesn't exist yet, will create new one
-            console.log(`Status file doesn't exist yet for project ${project}, will create new one`);
+            logger.info(`Status file doesn't exist yet for project ${project}, will create new one`);
         }
 
         // Ensure steps object exists
@@ -168,7 +169,7 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
                 errors: []
             };
         }
-        
+
         // Ensure all required properties exist
         if (!status.steps[stepKey].progress) {
             status.steps[stepKey].progress = { total: 0, completed: 0, failed: 0 };
@@ -181,7 +182,7 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
         }
 
         // Apply updates
-        Object.keys(updates).forEach(key => {
+        Object.keys(updates).forEach((key) => {
             try {
                 if (key === 'progress' && typeof updates[key] === 'object') {
                     // Merge progress updates
@@ -200,7 +201,7 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
                     status.steps[stepKey][key] = updates[key];
                 }
             } catch (updateErr) {
-                console.error(`Error updating ${key}: ${updateErr.message}`);
+                logger.error(`Error updating ${key}: ${updateErr.message}`);
                 // Continue with other updates
             }
         });
@@ -210,10 +211,10 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
 
         // Write updated status
         await filesWrapper.writeFile(statusPath, status);
-        console.log(`Successfully updated bulk copy step status for ${stepKey} in project ${project}`);
+        logger.info(`Successfully updated bulk copy step status for ${stepKey} in project ${project}`);
     } catch (err) {
-        console.error(`Error updating bulk copy step status: ${err.message}`);
-        console.error(`Error stack: ${err.stack}`);
+        logger.error(`Error updating bulk copy step status: ${err.message}`);
+        logger.error(`Error stack: ${err.stack}`);
     }
 }
 
@@ -222,16 +223,16 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
  * @param {*} status status object
  */
 async function updateOverallStatus(status) {
-    const stepStatuses = Object.values(status.steps || {}).map(step => step.status);
+    const stepStatuses = Object.values(status.steps || {}).map((step) => step.status);
     
     if (stepStatuses.includes('failed')) {
         status.overallStatus = 'failed';
     } else if (stepStatuses.includes('in_progress')) {
         status.overallStatus = 'in_progress';
-    } else if (stepStatuses.every(stepStatus => stepStatus === 'completed')) {
+    } else if (stepStatuses.every((stepStatus) => stepStatus === 'completed')) {
         status.overallStatus = 'completed';
         status.endTime = toUTCStr(new Date());
-    } else if (stepStatuses.some(stepStatus => stepStatus === 'completed')) {
+    } else if (stepStatuses.some((stepStatus) => stepStatus === 'completed')) {
         status.overallStatus = 'in_progress';
     } else {
         status.overallStatus = 'pending';
@@ -255,13 +256,13 @@ function updateSummary(status) {
     let totalFragments = 0;
     let totalBatches = 0;
 
-    Object.values(steps).forEach(step => {
+    Object.values(steps).forEach((step) => {
         if (step.progress) {
             totalFiles += step.progress.total || 0;
             successfulFiles += step.progress.completed || 0;
             failedFiles += step.progress.failed || 0;
         }
-        
+
         if (step.details) {
             totalFragments += step.details.totalFragments || 0;
             totalBatches += step.details.totalBatches || 0;
