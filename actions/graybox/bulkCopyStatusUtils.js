@@ -104,7 +104,7 @@ export function initializeBulkCopyStatus(project, experienceName, totalSourcePat
                 errors: []
             },
             step5_preview: {
-                name: 'Promoted Files Preview',
+                name: 'Promoted and Copied Files Preview',
                 status: 'pending',
                 startTime: null,
                 endTime: null,
@@ -115,6 +115,8 @@ export function initializeBulkCopyStatus(project, experienceName, totalSourcePat
                 },
                 details: {
                     previewedFiles: [],
+                    promotedFiles: [],
+                    copiedFiles: [],
                     failedFiles: []
                 },
                 errors: []
@@ -224,7 +226,7 @@ export async function updateBulkCopyStepStatus(filesWrapper, project, stepKey, u
  */
 async function updateOverallStatus(status) {
     const stepStatuses = Object.values(status.steps || {}).map((step) => step.status);
-    
+
     if (stepStatuses.includes('failed')) {
         status.overallStatus = 'failed';
     } else if (stepStatuses.includes('in_progress')) {
@@ -248,7 +250,7 @@ async function updateOverallStatus(status) {
  */
 function updateSummary(status) {
     const steps = status.steps || {};
-    
+
     // Calculate totals from all steps
     let totalFiles = 0;
     let successfulFiles = 0;
