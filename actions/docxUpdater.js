@@ -152,37 +152,181 @@ function findFirstGtRowInNode(node) {
  * @param {string} content - The content to check
  * @returns {boolean} - True if content contains any fragment paths
  */
-async function hasFragmentPathsInLink(content) {
-    // Find fragment links in content using angle bracket format
-    // Pattern matches: <https://...aem.page/.../fragments/...>
-    return content.match(/<https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*>/g) || [];
+function hasFragmentPathsInLink(content) {
+    // Find fragment links in content - can be in angle bracket format or plain URLs
+    // Pattern matches: <https://...aem.page/.../fragments/...> OR https://...aem.page/.../fragments/...
+    if (!content) {
+        logger.info(`In hasFragmentPathsInLink, content is null/undefined`);
+        return false;
+    }
+    
+    // Check for both angle bracket format and plain URL format
+    const angleBracketMatches = content.match(/<https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*>/g);
+    const plainUrlMatches = content.match(/https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*/g);
+    
+    const matches = angleBracketMatches || plainUrlMatches;
+    logger.info(`In hasFragmentPathsInLink, checking content: ${content}, angle bracket matches: ${angleBracketMatches ? angleBracketMatches.length : 0}, plain URL matches: ${plainUrlMatches ? plainUrlMatches.length : 0}`);
+    return matches;
 }
 
 const addExperienceNameToFragmentLinks = (mdast, expName, helixUtils) => {
     if (mdast) {
         const mainRepo = helixUtils.getRepo(false);
         const grayboxRepo = helixUtils.getRepo(true);
+        
+        logger.info(`In addExperienceNameToFragmentLinks, mainRepo: ${mainRepo}, grayboxRepo: ${grayboxRepo}, expName: ${expName}`);
+        logger.info(`In addExperienceNameToFragmentLinks, looking for pattern: --${mainRepo}-- to replace with --${grayboxRepo}--`);
+        logger.info(`In addExperienceNameToFragmentLinks, looking for pattern: /fragments/ to replace with /${expName}/fragments/`);
 
         mdast.forEach((child) => {
             if (child.type === 'gridTable') {
                 firstGtRows.push(findFirstGtRowInNode(child));
             }
+            
+            // Process text nodes that might contain fragment URLs
+            if (child.type === 'text' && child.value) {
+                const fragmentMatches = hasFragmentPathsInLink(child.value);
+                if (fragmentMatches) {
+                    logger.info(`In addExperienceNameToFragmentLinks, found fragment in text: ${child.value}`);
+                    // Transform fragment URLs in text content (both angle bracket and plain URL formats)
+                    child.value = child.value.replace(
+                        /(<)?https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*(>)?/g,
+                        (match) => {
+                            // Extract the URL part (remove angle brackets if present)
+                            const url = match.replace(/[<>]/g, '');
+                            
+                            // Extract the path after the domain
+                            const urlParts = url.split('.aem.page');
+                            if (urlParts.length === 2) {
+                                const domain = urlParts[0];
+                                const path = urlParts[1];
+                                
+                                // Transform the URL: replace repo and restructure path
+                                const newDomain = domain.replace(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                                
+                                // Check if the experience name is already in the path to avoid duplication
+                                let newPath;
+                                if (path.startsWith(`/${expName}/`)) {
+                                    // Experience name already exists in path, don't add it again
+                                    newPath = path;
+                                } else {
+                                    // Add experience name to the beginning of the path
+                                    newPath = `/${expName}${path}`;
+                                }
+                                
+                                const transformed = `${newDomain}.aem.page${newPath}`;
+                                
+                                // Restore angle brackets if they were present
+                                const result = match.startsWith('<') ? `<${transformed}>` : transformed;
+                                logger.info(`In addExperienceNameToFragmentLinks, transformed: ${match} -> ${result}`);
+                                return result;
+                            } else {
+                                // Fallback to original logic if URL structure is unexpected
+                                const transformed = match
+                                    .replace(`--${mainRepo}--`, `--${grayboxRepo}--`)
+                                    .replace(/\/fragments\//, `/${expName}/fragments/`);
+                                logger.info(`In addExperienceNameToFragmentLinks, transformed: ${match} -> ${transformed}`);
+                                return transformed;
+                            }
+                        }
+                    );
+                }
+            }
+            
             // Process fragment link URLs
-            if (child.type === 'link' && hasFragmentPathsInLink(child.url)) {
-                logger.info(`In addExperienceNameToFragmentLinks, child.url: ${child.url}`);
-                child.url = child.url.replaceAll(`/fragments/`, `/${expName}/fragments/`, '/').replaceAll(`--${mainRepo}--`, `--${grayboxRepo}--`);
-                logger.info(`In addExperienceNameToFragmentLinks, child.url after replacement: ${child.url}`);
+            if (child.type === 'link') {
+                logger.info(`In addExperienceNameToFragmentLinks, found link with url: ${child.url}`);
+                if (child.url && hasFragmentPathsInLink(child.url)) {
+                    logger.info(`In addExperienceNameToFragmentLinks, processing fragment link: ${child.url}`);
+                    const originalUrl = child.url;
+                    // Extract the path after the domain
+                    const urlParts = child.url.split('.aem.page');
+                    if (urlParts.length === 2) {
+                        const domain = urlParts[0];
+                        const path = urlParts[1];
+                        
+                        // Transform the URL: replace repo and restructure path
+                        const newDomain = domain.replace(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                        
+                        // Check if the experience name is already in the path to avoid duplication
+                        let newPath;
+                        if (path.startsWith(`/${expName}/`)) {
+                            // Experience name already exists in path, don't add it again
+                            newPath = path;
+                            logger.info(`In addExperienceNameToFragmentLinks, experience name already in path, not adding again`);
+                        } else {
+                            // Add experience name to the beginning of the path
+                            newPath = `/${expName}${path}`;
+                        }
+                        
+                        child.url = `${newDomain}.aem.page${newPath}`;
+                        logger.info(`In addExperienceNameToFragmentLinks, URL transformation details:`);
+                        logger.info(`  Original domain: ${domain}`);
+                        logger.info(`  New domain: ${newDomain}`);
+                        logger.info(`  Original path: ${path}`);
+                        logger.info(`  Experience name: ${expName}`);
+                        logger.info(`  New path: ${newPath}`);
+                        logger.info(`  Final URL: ${child.url}`);
+                    } else {
+                        // Fallback to original logic if URL structure is unexpected
+                        child.url = child.url
+                            .replace(`--${mainRepo}--`, `--${grayboxRepo}--`)
+                            .replace(/\/fragments\//, `/${expName}/fragments/`);
+                    }
+                    logger.info(`In addExperienceNameToFragmentLinks, transformed: ${originalUrl} -> ${child.url}`);
+                } else {
+                    logger.info(`In addExperienceNameToFragmentLinks, link does not contain fragments: ${child.url}`);
+                }
             }
 
             // Process link text content that contains fragment URLs
-            if (child.type === 'link' && child.children && hasFragmentPathsInLink(child.url)) {
+            if (child.type === 'link' && child.children) {
                 child.children.forEach((textNode) => {
-                    if (textNode.type === 'text' && textNode.value &&
-                        (textNode.value.includes(`/fragments/`) && textNode.value.includes(`--${mainRepo}--`))) {
-                        textNode.value = textNode.value.replaceAll(`/fragments/`, `/${expName}/fragments/`).replaceAll(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                    if (textNode.type === 'text' && textNode.value) {
+                        const fragmentMatches = hasFragmentPathsInLink(textNode.value);
+                        if (fragmentMatches) {
+                            textNode.value = textNode.value.replace(
+                                /(<)?https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*(>)?/g,
+                                (match) => {
+                                    // Extract the URL part (remove angle brackets if present)
+                                    const url = match.replace(/[<>]/g, '');
+                                    
+                                    // Extract the path after the domain
+                                    const urlParts = url.split('.aem.page');
+                                    if (urlParts.length === 2) {
+                                        const domain = urlParts[0];
+                                        const path = urlParts[1];
+                                        
+                                        // Transform the URL: replace repo and restructure path
+                                        const newDomain = domain.replace(`--${mainRepo}--`, `--${grayboxRepo}--`);
+                                        
+                                        // Check if the experience name is already in the path to avoid duplication
+                                        let newPath;
+                                        if (path.startsWith(`/${expName}/`)) {
+                                            // Experience name already exists in path, don't add it again
+                                            newPath = path;
+                                        } else {
+                                            // Add experience name to the beginning of the path
+                                            newPath = `/${expName}${path}`;
+                                        }
+                                        
+                                        const transformed = `${newDomain}.aem.page${newPath}`;
+                                        
+                                        // Restore angle brackets if they were present
+                                        return match.startsWith('<') ? `<${transformed}>` : transformed;
+                                    } else {
+                                        // Fallback to original logic if URL structure is unexpected
+                                        return match
+                                            .replace(`--${mainRepo}--`, `--${grayboxRepo}--`)
+                                            .replace(/\/fragments\//, `/${expName}/fragments/`);
+                                    }
+                                }
+                            );
+                        }
                     }
                 });
             }
+            
             if (child.children) {
                 addExperienceNameToFragmentLinks(child.children, expName, helixUtils);
             }

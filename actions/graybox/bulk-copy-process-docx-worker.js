@@ -145,9 +145,10 @@ async function main(params) {
                     const response = await sharepoint.fetchWithRetry(`${contentPath}`, options);
                     // eslint-disable-next-line no-await-in-loop
                     const content = await response.text();
-                    logger.info(`In BulkCopyProcessDocx-worker, hasFragmentPathsInContent(content): ${hasFragmentPathsInContent(content)}`);
+                    const fragmentMatches = hasFragmentPathsInContent(content);
+                    logger.info(`In BulkCopyProcessDocx-worker, hasFragmentPathsInContent(content): ${fragmentMatches ? fragmentMatches.length : 0} fragments found`);
 
-                    if (hasFragmentPathsInContent(content)) {
+                    if (fragmentMatches && fragmentMatches.length > 0) {
                         logger.info(`In BulkCopyProcessDocx-worker, processing DOCX file with fragments: ${fileName}`);
                         // Add the Graybox Experience Name to Graybox Fragment Links then perform Mdast to Docx conversion
                         // eslint-disable-next-line no-await-in-loop
@@ -411,9 +412,9 @@ async function main(params) {
 /**
  * Check if the content contains any fragment paths
  * @param {string} content - The content to check
- * @returns {boolean} - True if content contains any fragment paths
+ * @returns {Array} - Array of fragment matches or empty array
  */
-async function hasFragmentPathsInContent(content) {
+function hasFragmentPathsInContent(content) {
     // Find fragment links in content using angle bracket format
     // Pattern matches: <https://...aem.page/.../fragments/...>
     return content.match(/<https:\/\/[^>]*aem\.page[^>]*\/fragments\/[^>]*>/g) || [];
