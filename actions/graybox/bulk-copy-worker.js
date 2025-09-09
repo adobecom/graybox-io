@@ -120,8 +120,17 @@ async function main(params) {
         // Note: Project queue entry is now created in bulk-copy.js before invoking this worker
         logger.info('Project queue entry should already exist from bulk-copy.js invocation');
 
+        // Helper function to get mdPath for pages from originalUrl
+        const getPageMdPath = (pathInfo) => {
+            // Use originalUrl to construct mdPath by appending .md
+            if (pathInfo && pathInfo.originalUrl) {
+                return `${pathInfo.originalUrl}.md`;
+            }
+            return null;
+        };
+
         // Process source paths to discover fragments
-        const processedPaths = await processSourcePaths(sourcePathsArray, helixUtils, experienceName);
+        const processedPaths = await processSourcePaths(sourcePathsArray, helixUtils, experienceName, appConfig, getPageMdPath);
         
         // Separate files with and without fragments
         const filesWithFragments = processedPaths.filter(path => path.hasFragments);
@@ -144,7 +153,8 @@ async function main(params) {
                             nestedFragmentCount: fragment.nestedFragments.length,
                             nestedFragments: fragment.nestedFragments,
                             sourcePage: page.sourcePath,
-                            type: 'fragment_with_nested'
+                            type: 'fragment_with_nested',
+                            mdPath: `${fragment.fragmentPath}.md`
                         });
                         
                         // Also analyze each nested fragment to see if it has its own nested fragments
@@ -167,7 +177,8 @@ async function main(params) {
                                             availability: 'Available'
                                         })),
                                         sourcePage: page.sourcePath,
-                                        type: 'nested_fragment_with_nested'
+                                        type: 'nested_fragment_with_nested',
+                                        mdPath: `${nestedFragment.fragmentPath}.md`
                                     });
                                 } else {
                                     // This nested fragment has no nested fragments
@@ -178,7 +189,8 @@ async function main(params) {
                                         nestedFragmentCount: 0,
                                         nestedFragments: [],
                                         sourcePage: page.sourcePath,
-                                        type: 'nested_fragment_no_nested'
+                                        type: 'nested_fragment_no_nested',
+                                        mdPath: `${nestedFragment.fragmentPath}.md`
                                     });
                                 }
                             } else {
@@ -190,7 +202,8 @@ async function main(params) {
                                     nestedFragmentCount: 0,
                                     nestedFragments: [],
                                     sourcePage: page.sourcePath,
-                                    type: 'nested_fragment_no_nested'
+                                    type: 'nested_fragment_no_nested',
+                                    mdPath: `${nestedFragment.fragmentPath}.md`
                                 });
                             }
                         }
@@ -203,7 +216,8 @@ async function main(params) {
                             nestedFragmentCount: 0,
                             nestedFragments: [],
                             sourcePage: page.sourcePath,
-                            type: 'fragment_no_nested'
+                            type: 'fragment_no_nested',
+                            mdPath: `${fragment.fragmentPath}.md`
                         });
                     }
                 }
@@ -467,7 +481,7 @@ function convertFragmentUrlToSharePointPath(fragmentUrl) {
 /**
  * Process source paths to discover fragments and nested fragments
  */
-async function processSourcePaths(sourcePaths, helixUtils, experienceName) {
+async function processSourcePaths(sourcePaths, helixUtils, experienceName, appConfig, getPageMdPath) {
     const processedPaths = [];
     const processedUrls = new Set();
 
@@ -496,7 +510,8 @@ async function processSourcePaths(sourcePaths, helixUtils, experienceName) {
                     hasFragments: fragments.length > 0,
                     fragments: fragments,
                     fragmentCount: fragments.length,
-                    type: 'page'
+                    type: 'page',
+                    mdPath: getPageMdPath(pathInfo)
                 });
             } else {
                 // Non-AEM page, no fragments to discover
@@ -506,7 +521,8 @@ async function processSourcePaths(sourcePaths, helixUtils, experienceName) {
                     hasFragments: false,
                     fragments: [],
                     fragmentCount: 0,
-                    type: 'file'
+                    type: 'file',
+                    mdPath: getPageMdPath(pathInfo)
                 });
             }
         } catch (error) {
@@ -518,7 +534,8 @@ async function processSourcePaths(sourcePaths, helixUtils, experienceName) {
                 fragments: [],
                 fragmentCount: 0,
                 type: 'error',
-                error: error.message
+                error: error.message,
+                mdPath: getPageMdPath(pathInfo)
             });
         }
     }

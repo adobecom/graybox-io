@@ -15,17 +15,17 @@
 * from Adobe.
 ************************************************************************* */
 
-import { getAioLogger } from '../utils.js';
-import AppConfig from '../appConfig.js';
-import initFilesWrapper from './filesWrapper.js';
 import openwhisk from 'openwhisk';
+import { getAioLogger } from '../utils.js';
+// import AppConfig from '../appConfig'; // Not used in current implementation
+import initFilesWrapper from './filesWrapper.js';
 
-const logger = getAioLogger();
-const ow = openwhisk();
-async function main(params) {
+async function main() {
+    const logger = getAioLogger();
+    const ow = openwhisk();
     logger.info('Graybox Bulk Copy Promote Scheduler triggered');
 
-    const appConfig = new AppConfig(params);
+    // const appConfig = new AppConfig(params); // Not used in current implementation
     const filesWrapper = await initFilesWrapper(logger);
 
     // Read the Project Queue in the parent "bulk_copy_project_queue.json" file
@@ -46,7 +46,7 @@ async function main(params) {
 
     // Process the first project (one at a time to avoid overwhelming the system)
     const projectToPromote = projectsToPromote[0];
-    const { projectPath, experienceName, gbRootFolder } = projectToPromote;
+    const { experienceName, gbRootFolder } = projectToPromote;
     const project = `${gbRootFolder}/${experienceName}`;
 
     logger.info(`In Bulk Copy Promote Sched, Promoting project: ${project}`);

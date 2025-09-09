@@ -78,7 +78,7 @@ async function main(params) {
 
         try {
             // Read the processed file from AIO storage
-            const aioFilePath = `graybox_promote${project}/docx_bulk_copy${sourcePath}`;
+            const aioFilePath = `graybox_promote${project}/docx_bulk_copy/${experienceName}${sourcePath}`;
             logger.info(`In BulkCopyPromote-worker, reading processed file from AIO: ${aioFilePath}`);
             // eslint-disable-next-line no-await-in-loop
             const processedFile = await filesWrapper.readFileIntoBuffer(aioFilePath);
