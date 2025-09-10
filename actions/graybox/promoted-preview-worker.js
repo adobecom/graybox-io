@@ -166,14 +166,66 @@ async function main(params) {
         const mergedFailedFiles = [...new Set([...existingFailedFiles, ...finalFailedPreviews.map((s) => s.path)])];
         const mergedErrors = [...new Set([...existingErrors, ...finalFailedPreviews.map((s) => s.errorMsg || 'Preview failed')])];
 
-        logger.info(`Debug: Existing promoted files: ${existingPromotedFiles.length}, New: ${successfulPromotedFiles.length}, Merged: ${mergedPromotedFiles.length}`);
-        logger.info(`Debug: Existing copied files: ${existingCopiedFiles.length}, New: ${successfulCopiedFiles.length}, Merged: ${mergedCopiedFiles.length}`);
-        logger.info(`Debug: Merged promoted files: ${JSON.stringify(mergedPromotedFiles)}`);
-        logger.info(`Debug: Merged copied files: ${JSON.stringify(mergedCopiedFiles)}`);
+        // Check if there are any pending files by looking at the tracking files
+        let hasPendingPromotedFiles = false;
+        let hasPendingCopiedFiles = false;
+        let hasPromotedFilesToProcess = false;
+        let hasCopiedFilesToProcess = false;
+        let promotedFilesData = [];
+        let copiedFilesData = [];
+
+        try {
+            promotedFilesData = await filesWrapper.readFileIntoObject(promotedFilesPath);
+            if (Array.isArray(promotedFilesData)) {
+                hasPendingPromotedFiles = promotedFilesData.some((file) => file.previewStatus === 'pending');
+                hasPromotedFilesToProcess = promotedFilesData.length > 0;
+                logger.info(`Debug: Promoted files tracking data: ${JSON.stringify(promotedFilesData.map(f => ({ filePath: f.filePath, previewStatus: f.previewStatus })))}`);
+            }
+        } catch (err) {
+            logger.info(`Debug: Promoted files tracking file doesn't exist: ${err.message}`);
+        }
+
+        try {
+            copiedFilesData = await filesWrapper.readFileIntoObject(copiedFilesPath);
+            if (Array.isArray(copiedFilesData)) {
+                hasPendingCopiedFiles = copiedFilesData.some(file => file.previewStatus === 'pending');
+                hasCopiedFilesToProcess = copiedFilesData.length > 0;
+                logger.info(`Debug: Copied files tracking data: ${JSON.stringify(copiedFilesData.map(f => ({ filePath: f.filePath, previewStatus: f.previewStatus })))}`);
+            }
+        } catch (err) {
+            logger.info(`Debug: Copied files tracking file doesn't exist: ${err.message}`);
+        }
+
+        let shouldCompleteStep = false;
+
+        // Count total files that need to be processed
+        const totalPromotedFiles = promotedFilesData.length;
+        const totalCopiedFiles = copiedFilesData.length;
+        const totalFilesToProcess = totalPromotedFiles + totalCopiedFiles;
+
+        // Count files that have been successfully processed
+        const processedPromotedFiles = mergedPromotedFiles.length;
+        const processedCopiedFiles = mergedCopiedFiles.length;
+        const totalProcessedFiles = processedPromotedFiles + processedCopiedFiles;
+
+        // Check if all files have been processed
+        if (totalFilesToProcess === 0) {
+            // No files to process, step can be completed
+            shouldCompleteStep = true;
+            logger.info('No files to process, completing step');
+        } else if (totalProcessedFiles === totalFilesToProcess && !hasPendingPromotedFiles && !hasPendingCopiedFiles) {
+            // All files have been processed and no pending files remain
+            shouldCompleteStep = true;
+            logger.info(`All files processed (${totalProcessedFiles}/${totalFilesToProcess}), completing step`);
+        } else {
+            // Still have files to process or pending files
+            shouldCompleteStep = false;
+            logger.info(`Not all files processed (${totalProcessedFiles}/${totalFilesToProcess}), keeping step in progress`);
+        }
 
         await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
-            status: 'completed',
-            endTime: toUTCStr(new Date()),
+            status: shouldCompleteStep ? 'completed' : 'in_progress',
+            endTime: shouldCompleteStep ? toUTCStr(new Date()) : null,
             progress: {
                 completed: mergedPreviewedFiles.length,
                 failed: mergedFailedFiles.length
@@ -193,7 +245,6 @@ async function main(params) {
             const finalFailedPreviews = previewStatuses.filter((status) => !status.success);
             const sFailedPreviews = finalFailedPreviews.length > 0 ? 
                 `Failed Previews: \n${finalFailedPreviews.map((f) => f.path).join('\n')}` : '';
-            
             const excelValues = [[
                 `Promoted and Copied Files Preview completed for '${experienceName}' experience`,
                 toUTCStr(new Date()),
@@ -208,8 +259,12 @@ async function main(params) {
         } catch (err) {
             logger.error(`Error occurred while updating Excel during Promoted Preview: ${err}`);
         }
-        // eslint-disable-next-line max-len
-        responsePayload = `Promoted Preview Worker completed. Total: ${previewStatuses.length}, Successful: ${previewStatuses.filter(s => s.success).length}, Failed: ${previewStatuses.filter(s => !s.success).length}`;
+        const stepStatus = shouldCompleteStep ? 'completed' : 'in_progress';
+        const successfulCount = previewStatuses.filter((s) => s.success).length;
+        const failedCount = previewStatuses.filter((s) => !s.success).length;
+        const completionStatus = shouldCompleteStep ? 'All files processed' : 'Waiting for remaining files';
+        responsePayload = `Promoted Preview Worker ${stepStatus}. Total: ${previewStatuses.length}, ` +
+            `Successful: ${successfulCount}, Failed: ${failedCount}. Step completion: ${completionStatus}`;
     } else {
         responsePayload = 'Bulk Preview not enabled for Main Content Tree';
         logger.error(responsePayload);
