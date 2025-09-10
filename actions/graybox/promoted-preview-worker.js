@@ -92,6 +92,7 @@ async function main(params) {
         }
 
         logger.info(`In Promoted Preview Worker, Found ${allFilesToPreview.length} total files to preview (promoted + copied)`);
+        logger.info(`Debug: allFilesToPreview: ${JSON.stringify(allFilesToPreview.map(f => ({ filePath: f.filePath, fileType: f.fileType })))}`);
 
         await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
             status: 'in_progress',
@@ -137,21 +138,53 @@ async function main(params) {
             const previewStatus = previewStatuses.find((status) => status.path === file.filePath);
             return previewStatus && previewStatus.success;
         }).map((file) => file.filePath);
-        
+
+        // Read existing status to merge results
+        const statusPath = `graybox_promote${project}/bulk-copy-status.json`;
+        let existingStatus = {};
+        try {
+            const existingData = await filesWrapper.readFileIntoObject(statusPath);
+            if (existingData && typeof existingData === 'object') {
+                existingStatus = existingData;
+            }
+        } catch (err) {
+            logger.info(`Status file doesn't exist yet for project ${project}, will create new one`);
+        }
+
+        // Get existing details for step5_preview
+        const existingDetails = existingStatus.steps?.step5_preview?.details || {};
+        const existingPromotedFiles = existingDetails.promotedFiles || [];
+        const existingCopiedFiles = existingDetails.copiedFiles || [];
+        const existingPreviewedFiles = existingDetails.previewedFiles || [];
+        const existingFailedFiles = existingDetails.failedFiles || [];
+        const existingErrors = existingStatus.steps?.step5_preview?.errors || [];
+
+        // Merge the results
+        const mergedPromotedFiles = [...new Set([...existingPromotedFiles, ...successfulPromotedFiles])];
+        const mergedCopiedFiles = [...new Set([...existingCopiedFiles, ...successfulCopiedFiles])];
+        const mergedPreviewedFiles = [...new Set([...existingPreviewedFiles, ...previewStatuses.filter((s) => s.success).map((s) => s.path)])];
+        const mergedFailedFiles = [...new Set([...existingFailedFiles, ...finalFailedPreviews.map((s) => s.path)])];
+        const mergedErrors = [...new Set([...existingErrors, ...finalFailedPreviews.map((s) => s.errorMsg || 'Preview failed')])];
+
+        logger.info(`Debug: Existing promoted files: ${existingPromotedFiles.length}, New: ${successfulPromotedFiles.length}, Merged: ${mergedPromotedFiles.length}`);
+        logger.info(`Debug: Existing copied files: ${existingCopiedFiles.length}, New: ${successfulCopiedFiles.length}, Merged: ${mergedCopiedFiles.length}`);
+        logger.info(`Debug: Merged promoted files: ${JSON.stringify(mergedPromotedFiles)}`);
+        logger.info(`Debug: Merged copied files: ${JSON.stringify(mergedCopiedFiles)}`);
+
         await updateBulkCopyStepStatus(filesWrapper, project, 'step5_preview', {
             status: 'completed',
             endTime: toUTCStr(new Date()),
             progress: {
-                completed: previewStatuses.filter((s) => s.success).length,
-                failed: finalFailedPreviews.length
+                completed: mergedPreviewedFiles.length,
+                failed: mergedFailedFiles.length
             },
             details: {
-                previewedFiles: previewStatuses.filter((s) => s.success).map((s) => s.path),
-                promotedFiles: successfulPromotedFiles,
-                copiedFiles: successfulCopiedFiles,
-                failedFiles: finalFailedPreviews.map((s) => s.path)
+                previewedFiles: mergedPreviewedFiles,
+                promotedFiles: mergedPromotedFiles,
+                copiedFiles: mergedCopiedFiles,
+                failedFiles: mergedFailedFiles
             },
-            errors: finalFailedPreviews.map((s) => s.errorMsg || 'Preview failed')
+            errors: mergedErrors
         });
 
         await updateProjectStatus(project, filesWrapper, previewStatuses);

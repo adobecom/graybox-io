@@ -15,7 +15,7 @@
 * from Adobe.
 ************************************************************************* */
 
-import { getAioLogger, toUTCStr } from '../utils.js';
+import { getAioLogger, toUTCStr, handleExtension } from '../utils.js';
 import AppConfig from '../appConfig.js';
 import Sharepoint from '../sharepoint.js';
 import initFilesWrapper from './filesWrapper.js';
@@ -302,8 +302,11 @@ async function updateCopiedFilesTracking(project, copiedFiles, filesWrapper) {
 
         const timestamp = toUTCStr(new Date());
         copiedFiles.forEach((filePath) => {
+            // Normalize the file path to match what the preview worker expects
+            const normalizedFilePath = handleExtension(filePath);
             copiedFilesJson.push({
-                filePath,
+                filePath: normalizedFilePath,
+                originalFilePath: filePath, // Keep the original path for reference
                 copiedAt: timestamp,
                 previewStatus: 'pending',
                 fileType: 'non_processing'
