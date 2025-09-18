@@ -201,7 +201,9 @@ async function main(params) {
         // Count total files that need to be processed
         const totalPromotedFiles = promotedFilesData.length;
         const totalCopiedFiles = copiedFilesData.length;
+        logger.info(`Debug: Total promoted files: ${totalPromotedFiles}, Total copied files: ${totalCopiedFiles}`);
         const totalFilesToProcess = totalPromotedFiles + totalCopiedFiles;
+        logger.info(`Debug: Total files to process: ${totalFilesToProcess}`);
 
         // Count files that have been successfully processed
         const processedPromotedFiles = mergedPromotedFiles.length;
@@ -361,7 +363,20 @@ async function updateProjectStatus(project, filesWrapper, previewStatuses) {
         }
     };
     await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, 'promoted_preview_completed');
+
+    const projectQueueBulkCopy = await changeProjectStatusInQueue(filesWrapper, project, 'promoted_preview_completed');
+    logger.info(`In promote-worker, for project: ${project} After Preview of Promoted and Copied Files, Project Queue Json: ${JSON.stringify(projectQueueBulkCopy)}`);
     logger.info('Updated project status to promoted_preview_completed');
+}
+
+async function changeProjectStatusInQueue(filesWrapper, project, toBeStatus) {
+    const projectQueueBulkCopy = await filesWrapper.readFileIntoObject('graybox_promote/bulk_copy_project_queue.json');
+    const index = projectQueueBulkCopy.findIndex((obj) => obj.projectPath === `${project}`);
+    if (index !== -1) {
+        projectQueueBulkCopy[index].status = toBeStatus;
+        await filesWrapper.writeFile('graybox_promote/bulk_copy_project_queue.json', projectQueueBulkCopy);
+    }
+    return projectQueueBulkCopy;
 }
 
 function exitAction(resp) {
