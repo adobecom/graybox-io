@@ -54,10 +54,19 @@ async function main(params) {
 
         try {
             const promotedFilesData = await filesWrapper.readFileIntoObject(promotedFilesPath);
+            logger.info(`Debug: Existing data for promoted files for preview: ${JSON.stringify(promotedFilesData)}`);
             if (Array.isArray(promotedFilesData)) {
                 const pendingPromotedFiles = promotedFilesData.filter((file) => file.previewStatus === 'pending');
-                allFilesToPreview = allFilesToPreview.concat(pendingPromotedFiles);
-                logger.info(`Found ${pendingPromotedFiles.length} promoted files pending preview`);
+                
+                // Filter out duplicates by checking both filePath and fileType
+                const uniquePromotedFiles = pendingPromotedFiles.filter(newFile => 
+                    !allFilesToPreview.some(existingFile => 
+                        existingFile.filePath === newFile.filePath && existingFile.fileType === newFile.fileType
+                    )
+                );
+                
+                allFilesToPreview = allFilesToPreview.concat(uniquePromotedFiles);
+                logger.info(`Found ${pendingPromotedFiles.length} promoted files pending preview, ${uniquePromotedFiles.length} unique files added`);
             }
         } catch (err) {
             if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
@@ -71,8 +80,16 @@ async function main(params) {
             const copiedFilesData = await filesWrapper.readFileIntoObject(copiedFilesPath);
             if (Array.isArray(copiedFilesData)) {
                 const pendingCopiedFiles = copiedFilesData.filter((file) => file.previewStatus === 'pending');
-                allFilesToPreview = allFilesToPreview.concat(pendingCopiedFiles);
-                logger.info(`Found ${pendingCopiedFiles.length} copied files pending preview`);
+                
+                // Filter out duplicates by checking both filePath and fileType
+                const uniqueCopiedFiles = pendingCopiedFiles.filter(newFile => 
+                    !allFilesToPreview.some(existingFile => 
+                        existingFile.filePath === newFile.filePath && existingFile.fileType === newFile.fileType
+                    )
+                );
+                
+                allFilesToPreview = allFilesToPreview.concat(uniqueCopiedFiles);
+                logger.info(`Found ${pendingCopiedFiles.length} copied files pending preview, ${uniqueCopiedFiles.length} unique files added`);
             }
         } catch (err) {
             if (err.message.includes('ERROR_FILE_NOT_EXISTS')) {
@@ -119,7 +136,7 @@ async function main(params) {
         if (failedPreviews.length > 0) {
             logger.info(`Retrying ${failedPreviews.length} failed previews`);
             const retryPaths = failedPreviews.map((status) => status.path);
-            const retryStatuses = await helixUtils.bulkPreview(retryPaths, helixUtils.getOperations().PREVIEW, experienceName, true);
+            const retryStatuses = await helixUtils.bulkPreview(retryPaths, helixUtils.getOperations().PREVIEW, experienceName, true, 1);
             await updateFilesPreviewStatus(promotedFilesPath, copiedFilesPath, allFilesToPreview, retryStatuses, filesWrapper);
         }
 
@@ -240,6 +257,11 @@ async function main(params) {
             },
             errors: mergedErrors
         });
+
+        if (shouldCompleteStep) {
+            await changeProjectStatusInQueue(filesWrapper, project, 'completed');
+            logger.info(`Updated project ${project} status to 'completed' in central queue`);
+        }
 
         await updateProjectStatus(project, filesWrapper, previewStatuses);
 
@@ -363,9 +385,6 @@ async function updateProjectStatus(project, filesWrapper, previewStatuses) {
         }
     };
     await writeProjectStatus(filesWrapper, `graybox_promote${project}/status.json`, statusEntry, 'promoted_preview_completed');
-
-    const projectQueueBulkCopy = await changeProjectStatusInQueue(filesWrapper, project, 'promoted_preview_completed');
-    logger.info(`In promote-worker, for project: ${project} After Preview of Promoted and Copied Files, Project Queue Json: ${JSON.stringify(projectQueueBulkCopy)}`);
     logger.info('Updated project status to promoted_preview_completed');
 }
 

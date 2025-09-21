@@ -45,7 +45,7 @@ async function main(params) {
         // Find projects that have been promoted or have copied files for preview
         const projectsToPreview = [];
         for (const project of bulkCopyProjectQueue) {
-            if (project.status === 'promoted' || project.status === 'partially_promoted') {
+            if (project.status === 'promoted' || project.status === 'partially_promoted' || project.status === 'non_processing_batches_copied') {
                 try {
                     let pendingFilesCount = 0;
                     
