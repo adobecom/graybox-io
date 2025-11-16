@@ -216,8 +216,8 @@ async function main(params) {
         let shouldCompleteStep = false;
 
         // Count total files that need to be processed
-        const totalPromotedFiles = promotedFilesData.length;
-        const totalCopiedFiles = copiedFilesData.length;
+        const totalPromotedFiles = promotedFilesData.length || 0;
+        const totalCopiedFiles = copiedFilesData.length || 0;
         logger.info(`Debug: Total promoted files: ${totalPromotedFiles}, Total copied files: ${totalCopiedFiles}`);
         const totalFilesToProcess = totalPromotedFiles + totalCopiedFiles;
         logger.info(`Debug: Total files to process: ${totalFilesToProcess}`);
